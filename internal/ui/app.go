@@ -171,15 +171,20 @@ func NewMockup(theme Theme) App {
 	// Sessions in alphabetical order, as the real snapshot will deliver.
 	snap := model.Snapshot{Sessions: []model.Session{
 		{Name: "api-server", Current: true, Agents: []model.Agent{
-			{PaneID: "%1", WindowIndex: 1, WindowName: "claude", Branch: "feat/rate-limit-middleware-rollout", State: model.StateWorking, Since: now.Add(-2 * time.Minute), Subagents: 2},
-			{PaneID: "%2", WindowIndex: 3, WindowName: "claude", Branch: "fix/csrf-rotation", State: model.StatePermission, Since: now.Add(-40 * time.Second)},
+			{PaneID: "%1", WindowIndex: 1, WindowName: "claude", Branch: "feat/rate-limit-middleware-rollout",
+				State: model.StateWorking, Since: now.Add(-2 * time.Minute), Subagents: 2},
+			{PaneID: "%2", WindowIndex: 3, WindowName: "claude", Branch: "fix/csrf-rotation",
+				State: model.StatePermission, Since: now.Add(-40 * time.Second)},
 		}},
 		{Name: "blog", Agents: []model.Agent{
-			{PaneID: "%7", WindowIndex: 2, WindowName: "claude", Branch: "draft/tmux-agents-post", State: model.StateDone, Since: now.Add(-12 * time.Minute)},
-			{PaneID: "%8", WindowIndex: 4, WindowName: "claude", Branch: "main", State: model.StateDone, Seen: true, Since: now.Add(-33 * time.Minute)},
+			{PaneID: "%7", WindowIndex: 2, WindowName: "claude", Branch: "draft/tmux-agents-post",
+				State: model.StateDone, Since: now.Add(-12 * time.Minute)},
+			{PaneID: "%8", WindowIndex: 4, WindowName: "claude", Branch: "main",
+				State: model.StateDone, Seen: true, Since: now.Add(-33 * time.Minute)},
 		}},
 		{Name: "dotfiles", Agents: []model.Agent{
-			{PaneID: "%5", WindowIndex: 1, WindowName: "claude", Branch: "main", State: model.StateQuestion, Since: now.Add(-4 * time.Minute)},
+			{PaneID: "%5", WindowIndex: 1, WindowName: "claude", Branch: "main",
+				State: model.StateQuestion, Since: now.Add(-4 * time.Minute)},
 		}},
 		{Name: "scratch"},
 	}}
