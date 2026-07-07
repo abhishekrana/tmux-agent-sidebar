@@ -184,6 +184,27 @@ func (s *server) capture(pane string) string {
 	return out
 }
 
+// captureText returns the pane content without escape sequences.
+func (s *server) captureText(pane string) string {
+	out, _ := s.tmuxErr("capture-pane", "-p", "-t", pane)
+	return out
+}
+
+// click injects a left mouse press+release at 1-based (col, row) into the
+// pane's input as raw SGR sequences — exactly the bytes a terminal sends,
+// so the TUI's real mouse path runs.
+func (s *server) click(pane string, col, row int) {
+	s.t.Helper()
+	for _, suffix := range []string{"M", "m"} { // press, then release
+		seq := fmt.Sprintf("\x1b[<0;%d;%d%s", col, row, suffix)
+		args := []string{"send-keys", "-H", "-t", pane}
+		for _, b := range []byte(seq) {
+			args = append(args, fmt.Sprintf("%02x", b))
+		}
+		s.tmux(args...)
+	}
+}
+
 func waitFor(t *testing.T, desc string, timeout time.Duration, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -434,6 +455,76 @@ func TestJumpViaEnter(t *testing.T) {
 	waitFor(t, "bbb sidebar highlights jumped-to agent", 700*time.Millisecond, func() bool {
 		_, lineNo := highlightedAgentLine(s.capture(sideB))
 		return lineNo >= 0
+	})
+}
+
+// TestClickJump is the full reproduction of the reported bug, mouse and
+// all: single-click the other session's agent in the sidebar, land in
+// that session, and see its own sidebar highlight the clicked agent —
+// with no second click and no tick-latency.
+func TestClickJump(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script(1) not available for pty client")
+	}
+	s := start(t)
+	s.newSession("aaa")
+	s.newSession("bbb")
+	s.agentPane("aaa")
+	s.agentPane("bbb")
+	s.tmux("set-option", "-g", "window-size", "manual")
+
+	s.script("toggle.sh")
+	sideA, sideB := s.sidebarPane("aaa"), s.sidebarPane("bbb")
+	waitFor(t, "sidebars ready", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(sideA), "bbb") &&
+			strings.Contains(s.capture(sideB), "bbb")
+	})
+
+	client := exec.Command("script", "-qfc", "tmux attach-session -t aaa", "/dev/null")
+	client.Env = s.env
+	if err := client.Start(); err != nil {
+		t.Fatalf("attach client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Process.Kill(); _, _ = client.Process.Wait() })
+	waitFor(t, "client attached", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "aaa")
+	})
+
+	// Find bbb's agent row in aaa's sidebar: the first claude line after
+	// the bbb session header (rows are 0-based, SGR is 1-based).
+	lines := strings.Split(s.captureText(sideA), "\n")
+	row := -1
+	for i, l := range lines {
+		if strings.Contains(l, "bbb") {
+			for j := i + 1; j < len(lines); j++ {
+				if strings.Contains(lines[j], "claude") {
+					row = j + 1
+					break
+				}
+			}
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatalf("bbb's agent row not found in sidebar:\n%s", strings.Join(lines, "\n"))
+	}
+
+	s.click(sideA, 5, row)
+
+	waitFor(t, "client switched to bbb after single click", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "bbb")
+	})
+	// Both sidebars — including bbb's, a separate process that never saw
+	// the click — must highlight the clicked agent, faster than the tick.
+	waitFor(t, "clicked agent highlighted in both sidebars", 700*time.Millisecond, func() bool {
+		for _, side := range []string{sideA, sideB} {
+			if _, lineNo := highlightedAgentLine(s.capture(side)); lineNo != row-1 {
+				return false
+			}
+		}
+		return true
 	})
 }
 
