@@ -67,9 +67,13 @@ type Snapshot struct {
 }
 
 // Working and Attention return server-wide counts for header/footer.
-func (s Snapshot) Working() int   { return s.count(func(a Agent) bool { return a.State == StateWorking }) }
-func (s Snapshot) Attention() int { return s.count(func(a Agent) bool { return a.State.NeedsAttention() }) }
-func (s Snapshot) Total() int     { return s.count(func(Agent) bool { return true }) }
+func (s Snapshot) Working() int {
+	return s.count(func(a Agent) bool { return a.State == StateWorking })
+}
+func (s Snapshot) Attention() int {
+	return s.count(func(a Agent) bool { return a.State.NeedsAttention() })
+}
+func (s Snapshot) Total() int { return s.count(func(Agent) bool { return true }) }
 
 func (s Snapshot) count(pred func(Agent) bool) int {
 	n := 0

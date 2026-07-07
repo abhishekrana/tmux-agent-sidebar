@@ -10,9 +10,9 @@ import (
 
 func TestDecide(t *testing.T) {
 	cases := []struct {
-		name  string
-		ev    Event
-		want  Effect
+		name string
+		ev   Event
+		want Effect
 	}{
 		{"session start", Event{Name: "SessionStart"}, Effect{Register: true, State: model.StateIdle}},
 		{"prompt", Event{Name: "UserPromptSubmit"}, Effect{Register: true, State: model.StateWorking}},

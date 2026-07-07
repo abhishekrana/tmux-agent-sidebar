@@ -1,17 +1,24 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/abhishekrana/tmux-agent-sidebar/internal/model"
+	"github.com/abhishekrana/tmux-agent-sidebar/internal/tmux"
 )
 
-const spinnerInterval = 200 * time.Millisecond
+const (
+	spinnerInterval  = 200 * time.Millisecond
+	snapshotInterval = time.Second
+)
 
 type tickMsg time.Time
+
+type snapMsg model.Snapshot
 
 // App is the Bubble Tea model for the sidebar.
 //
@@ -27,6 +34,51 @@ type App struct {
 	height int
 	flash  string
 	mockup bool
+
+	// live-mode plumbing (nil in mockup mode)
+	runner   tmux.Runner
+	branches *tmux.BranchCache
+	current  string // session the sidebar pane lives in
+}
+
+// NewLive builds the sidebar against the real tmux server.
+func NewLive(theme Theme) App {
+	runner := tmux.Exec{}
+	app := App{
+		theme:    theme,
+		runner:   runner,
+		branches: tmux.NewBranchCache(),
+		current:  tmux.CurrentSession(runner),
+	}
+	app.setSnapshot(tmux.Snapshot(runner, app.branches, app.current))
+	return app
+}
+
+// setSnapshot swaps in fresh data, keeping the selection anchored to the
+// same pane across refreshes.
+func (a *App) setSnapshot(snap model.Snapshot) {
+	var selected string
+	if a.blockSelectable(a.cursor) {
+		b := a.blocks[a.cursor]
+		selected = a.snap.Sessions[b.session].Agents[b.agent].PaneID
+	}
+	a.snap = snap
+	a.rebuild()
+	if selected == "" {
+		return
+	}
+	for i, b := range a.blocks {
+		if b.selectable() && snap.Sessions[b.session].Agents[b.agent].PaneID == selected {
+			a.cursor = i
+			return
+		}
+	}
+}
+
+func (a App) snapshotTick() tea.Cmd {
+	return tea.Tick(snapshotInterval, func(time.Time) tea.Msg {
+		return snapMsg(tmux.Snapshot(a.runner, a.branches, a.current))
+	})
 }
 
 // NewMockup builds the sidebar with representative fake data for visual
@@ -88,7 +140,12 @@ func (a *App) moveCursor(dir int) {
 	}
 }
 
-func (a App) Init() tea.Cmd { return tick() }
+func (a App) Init() tea.Cmd {
+	if a.mockup {
+		return tick()
+	}
+	return tea.Batch(tick(), a.snapshotTick())
+}
 
 func tick() tea.Cmd {
 	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg { return tickMsg(t) })
@@ -99,6 +156,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		a.frame++
 		return a, tick()
+	case snapMsg:
+		a.setSnapshot(model.Snapshot(msg))
+		return a, a.snapshotTick()
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		return a, nil
@@ -166,17 +226,26 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// activate acts on the block under the cursor (Enter or click).
+// activate jumps to the agent under the cursor (Enter or click).
 func (a App) activate() (tea.Model, tea.Cmd) {
 	if !a.blockSelectable(a.cursor) {
 		return a, nil
 	}
 	b := a.blocks[a.cursor]
-	ag := a.snap.Sessions[b.session].Agents[b.agent]
+	sess := a.snap.Sessions[b.session]
+	ag := sess.Agents[b.agent]
 	if a.mockup {
 		a.flash = "would jump to " + ag.PaneID
+		return a, nil
 	}
-	// Real jump lands in milestone 4.
+	_, err := a.runner.Run(
+		"switch-client", "-t", sess.Name, ";",
+		"select-window", "-t", fmt.Sprintf("%s:%d", sess.Name, ag.WindowIndex), ";",
+		"select-pane", "-t", ag.PaneID,
+	)
+	if err != nil {
+		a.flash = "jump failed: " + err.Error()
+	}
 	return a, nil
 }
 

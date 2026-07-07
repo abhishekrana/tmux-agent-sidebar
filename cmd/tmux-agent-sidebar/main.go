@@ -19,6 +19,7 @@ import (
 const usage = `usage: tmux-agent-sidebar <command>
 
 commands:
+  run [--theme light|dark]      run the live sidebar (inside a tmux pane)
   mockup [--theme light|dark]   render the sidebar with fake data (visual preview)
   hook                          Claude Code hook entry: stdin JSON -> pane options
   install-hooks [--target f]    add hook entries to Claude settings (default:
@@ -31,6 +32,8 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "run":
+		runLive(os.Args[2:])
 	case "mockup":
 		runMockup(os.Args[2:])
 	case "hook":
@@ -96,7 +99,18 @@ func themeFlag(args []string) ui.Theme {
 }
 
 func runMockup(args []string) {
-	app := ui.NewMockup(themeFlag(args))
+	runTUI(ui.NewMockup(themeFlag(args)))
+}
+
+func runLive(args []string) {
+	if os.Getenv("TMUX") == "" {
+		fmt.Fprintln(os.Stderr, "error: run must be started inside a tmux pane")
+		os.Exit(1)
+	}
+	runTUI(ui.NewLive(themeFlag(args)))
+}
+
+func runTUI(app ui.App) {
 	if _, err := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

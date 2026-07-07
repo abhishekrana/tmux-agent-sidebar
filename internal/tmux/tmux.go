@@ -18,7 +18,9 @@ type Exec struct{}
 
 func (Exec) Run(args ...string) (string, error) {
 	out, err := exec.Command("tmux", args...).Output()
-	return strings.TrimSpace(string(out)), err
+	// Trim only newlines: a TrimSpace would eat trailing tabs of the
+	// last output line, i.e. trailing empty format fields.
+	return strings.TrimRight(string(out), "\n"), err
 }
 
 // PaneOption reads a pane-scoped user option; empty string if unset.

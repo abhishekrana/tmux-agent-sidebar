@@ -9,15 +9,15 @@ import (
 // Theme is the sidebar palette. The default matches the user's terminal
 // background (no explicit bg fill) so it blends into any tmux window style.
 type Theme struct {
-	Fg        lipgloss.Color // default text
-	Muted     lipgloss.Color // separators, hints, idle
-	Emphasis  lipgloss.Color // session names
-	Accent    lipgloss.Color // current-session marker
-	SelBg     lipgloss.Color // selected row background
-	Working   lipgloss.Color
-	Perm      lipgloss.Color
-	Question  lipgloss.Color
-	Done      lipgloss.Color
+	Fg       lipgloss.Color // default text
+	Muted    lipgloss.Color // separators, hints, idle
+	Emphasis lipgloss.Color // session names
+	Accent   lipgloss.Color // current-session marker
+	SelBg    lipgloss.Color // selected row background
+	Working  lipgloss.Color
+	Perm     lipgloss.Color
+	Question lipgloss.Color
+	Done     lipgloss.Color
 }
 
 // SolarizedLight matches the user's tmux/nvim/hunk Solarized Light stack.
