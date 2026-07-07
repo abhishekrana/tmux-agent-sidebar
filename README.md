@@ -62,17 +62,19 @@ next restart.
 
 ## Use
 
-| key            | action                                    |
-| -------------- | ----------------------------------------- |
-| `prefix + e`   | toggle the sidebar for the current session |
-| `j`/`k`, wheel | move between agents                       |
-| `Enter`, click | jump to that agent's pane                 |
-| `g` / `G`      | first / last agent                        |
-| `q`            | hide the sidebar                          |
+| key            | action                                     |
+| -------------- | ------------------------------------------ |
+| `prefix + e`   | toggle the sidebar in **all** sessions     |
+| `j`/`k`, wheel | move between agents                        |
+| `Enter`, click | jump to that agent's pane                  |
+| `g` / `G`      | first / last agent                         |
+| `q`            | hide the sidebar everywhere (same as toggle) |
 
-While the sidebar is on, it follows you: switching windows moves the
-sidebar pane into the active window (one long-lived pane, so selection
-and scroll position survive).
+The toggle is global: one press opens a sidebar in every session (and
+sessions created while it's on get one automatically); the next press
+closes them all. While on, each session's sidebar follows you:
+switching windows moves the sidebar pane into the active window (one
+long-lived pane, so selection and scroll position survive).
 
 Agent states: `working` (yellow, spinner) · `permission` (red) ·
 `asking` (orange) · `done` (green until you visit the pane, then gray) ·
