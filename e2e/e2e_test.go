@@ -724,6 +724,61 @@ func TestResurrectOrphanAdoption(t *testing.T) {
 	})
 }
 
+// TestSidebarSelfRegisters: a sidebar started outside open.sh (as a
+// resurrect restore does) must stamp its own options and follow hook.
+func TestSidebarSelfRegisters(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	pane := s.tmux("split-window", "-d", "-t", "work", "-P", "-F", "#{pane_id}",
+		binPath+" run")
+
+	waitFor(t, "self-registered options", 5*time.Second, func() bool {
+		return s.sidebarPane("work") == pane
+	})
+	if hooks, _ := s.tmuxErr("show-hooks", "-t", "work"); !strings.Contains(hooks, "follow.sh") {
+		t.Error("self-registration did not install the follow hook")
+	}
+	// And the follow hook actually works: sidebar moves with the window.
+	s.tmux("new-window", "-t", "work")
+	waitFor(t, "sidebar followed", 5*time.Second, func() bool {
+		cur, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{window_id}")
+		sidewin, _ := s.tmuxErr("display-message", "-t", pane, "-p", "#{window_id}")
+		return cur != "" && cur == sidewin
+	})
+}
+
+// TestResurrectSaveHook: the post-save hook stamps a restore command on
+// sidebar pane lines (resurrect saves them with an empty command).
+func TestResurrectSaveHook(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+
+	// Sidebar lines carry an empty command or the blocked wait-for child.
+	state := filepath.Join(t.TempDir(), "state.txt")
+	lines := "pane\twork\t1\t1\t:*\t1\thost\t:/tmp\t0\ttmux-agent-sidebar\t:\n" +
+		"pane\twork\t2\t1\t:*\t1\thost\t:/tmp\t0\ttmux-agent-sidebar\t:/usr/bin/tmux wait-for tmux-agent-sidebar-refresh\n" +
+		"pane\twork\t1\t1\t:*\t2\thost\t:/tmp\t1\tclaude\t:claude\n"
+	if err := os.WriteFile(state, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s.script("resurrect-save.sh", state)
+	out, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamped := "tmux-agent-sidebar\t:" + repoRoot + "/bin/tmux-agent-sidebar run --theme"
+	if n := strings.Count(string(out), stamped); n != 2 {
+		t.Errorf("stamped %d sidebar lines, want 2:\n%s", n, out)
+	}
+	if strings.Contains(string(out), "wait-for") {
+		t.Errorf("wait-for child command survived:\n%s", out)
+	}
+	if !strings.Contains(string(out), "claude\t:claude") {
+		t.Errorf("non-sidebar line modified:\n%s", out)
+	}
+}
+
 // TestStatusSegment: the status subcommand counts attention + working.
 func TestStatusSegment(t *testing.T) {
 	s := start(t)

@@ -98,19 +98,17 @@ The sidebar itself jumps on release for the same reason.
 
 ## tmux-resurrect / continuum
 
-Saved layouts include the sidebar pane, but restores don't bring back
-the process, its options, or its hooks — leaving a dead 30-column shell
-pane where the sidebar was. Whitelist the sidebar so restores relaunch
-it:
+Whitelist the sidebar so restores relaunch it:
 
 ```tmux
 set -g @resurrect-processes '"~tmux-agent-sidebar run"'
 ```
 
-Restored sidebars are then adopted automatically: opening (toggle or
-the session-created hook) re-stamps the options and hooks on any pane
-already running the sidebar instead of opening a second one, and
-toggle-off kills sidebar panes even when they aren't tracked.
+The rest is automatic. Resurrect can't see the sidebar's command (it's
+the pane's root process), so the plugin sets resurrect's post-save hook
+to stamp the command into each save; on restore the whitelist relaunches
+it and the sidebar re-registers its own options and follow hook. Without
+the whitelist, the restored slot is a dead shell pane you can close.
 
 ## Status line segment
 

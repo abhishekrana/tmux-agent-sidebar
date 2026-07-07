@@ -26,6 +26,12 @@ key=${key:-e}
 # Global toggle: opens/closes the sidebar in every session at once.
 tmux bind-key "$key" run-shell "$CURRENT_DIR/scripts/toggle.sh"
 
+# tmux-resurrect: stamp the sidebar's restore command into each save
+# (see scripts/resurrect-save.sh). Don't clobber a user-set hook.
+if [ -z "$(tmux show-option -gqv @resurrect-hook-post-save-layout)" ]; then
+    tmux set-option -g @resurrect-hook-post-save-layout "$CURRENT_DIR/scripts/resurrect-save.sh"
+fi
+
 # Replace the #{agent_sidebar_status} placeholder in the status line
 # with the live segment (standard TPM interpolation pattern).
 placeholder="\#{agent_sidebar_status}"

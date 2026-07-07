@@ -73,7 +73,25 @@ func NewLive(theme Theme) App {
 		app.lastSel = strings.TrimSpace(sel)
 		app.selectPane(app.lastSel)
 	}
+	app.register()
 	return app
+}
+
+// register stamps this sidebar's session options and follow hook, so a
+// sidebar started outside open.sh (tmux-resurrect restore) works fully.
+func (a App) register() {
+	pane := os.Getenv("TMUX_PANE")
+	exe, err := os.Executable()
+	if pane == "" || a.current == "" || err != nil {
+		return
+	}
+	follow := filepath.Join(filepath.Dir(filepath.Dir(exe)), "scripts", "follow.sh")
+	_, _ = a.runner.Run(
+		"set-option", "-t", a.current, "-q", "@sidebar_pane", pane, ";",
+		"set-option", "-t", a.current, "-q", "@sidebar_on", "1", ";",
+		"set-hook", "-t", a.current, "session-window-changed",
+		"run-shell '"+follow+" #{session_name}'",
+	)
 }
 
 // debugf appends a timestamped line to the debug log when enabled via
