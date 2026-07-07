@@ -11,8 +11,13 @@ set -euo pipefail
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$CURRENT_DIR/bin/tmux-agent-sidebar"
 
-# Build on install when no binary is shipped and Go is available.
-if [ ! -x "$BIN" ] && command -v go >/dev/null 2>&1; then
+# Build when the binary is missing or older than the source (TPM update).
+stale() {
+    [ ! -x "$BIN" ] ||
+        [ -n "$(find "$CURRENT_DIR/cmd" "$CURRENT_DIR/internal" "$CURRENT_DIR/go.mod" \
+            -newer "$BIN" -print -quit 2>/dev/null)" ]
+}
+if stale && command -v go >/dev/null 2>&1; then
     (cd "$CURRENT_DIR" && go build -o bin/tmux-agent-sidebar ./cmd/tmux-agent-sidebar) ||
         tmux display-message "tmux-agent-sidebar: go build failed"
 fi
