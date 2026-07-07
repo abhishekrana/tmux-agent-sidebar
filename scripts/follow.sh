@@ -5,6 +5,7 @@
 set -euo pipefail
 
 session=${1:?session name}
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 [ "$(tmux show-option -t "$session" -qv @sidebar_on)" = "1" ] || exit 0
 pane=$(tmux show-option -t "$session" -qv @sidebar_pane)
@@ -33,5 +34,6 @@ width=${width:-30}
 
 # -d: move without stealing focus or the window's automatic-rename.
 tmux set-option -t "$session" -q @sidebar_moving 1
-tmux join-pane -dhbf -l "$width" -s "$pane" -t "$curwin" 2>/dev/null || true
+join() { tmux join-pane -dhbf -l "$width" -s "$pane" -t "$curwin" 2>/dev/null || true; }
+insert_keeping_widths "$curwin" "$width" join
 tmux set-option -t "$session" -uq @sidebar_moving

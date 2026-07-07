@@ -6,6 +6,7 @@ set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$PLUGIN_DIR/bin/tmux-agent-sidebar"
+. "$PLUGIN_DIR/scripts/common.sh"
 
 session=${1:?usage: open.sh <session>}
 
@@ -27,7 +28,9 @@ fi
 
 # -d: don't steal focus or the window's automatic-rename.
 active=$(tmux display-message -p -t "$session" '#{pane_id}')
-new=$(tmux split-window -dhbf -l "$width" -t "$active" -P -F '#{pane_id}' "$BIN run --theme $theme")
+curwin=$(tmux display-message -p -t "$session" '#{window_id}')
+split() { new=$(tmux split-window -dhbf -l "$width" -t "$active" -P -F '#{pane_id}' "$BIN run --theme $theme"); }
+insert_keeping_widths "$curwin" "$width" split
 tmux set-option -t "$session" -q @sidebar_pane "$new"
 tmux set-option -t "$session" -q @sidebar_on 1
 

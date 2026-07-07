@@ -596,6 +596,49 @@ func TestClickJump(t *testing.T) {
 	})
 }
 
+// TestFollowKeepsColumnWidths: moving the sidebar in and out of a window
+// must not redistribute the other columns — tmux takes the inserted
+// width proportionally from all panes but returns it to the leftmost
+// only, which drained the right column a bit per window switch.
+func TestFollowKeepsColumnWidths(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	// Three columns: the drain needs panes beyond the leftmost.
+	right := s.tmux("split-window", "-h", "-d", "-t", "work:0.0", "-l", "60",
+		"-P", "-F", "#{pane_id}")
+	mid := s.tmux("split-window", "-h", "-d", "-t", "work:0.0", "-l", "60",
+		"-P", "-F", "#{pane_id}")
+
+	s.script("open.sh", "work")
+	side := s.sidebarPane("work")
+	widths := func() string {
+		m, _ := s.tmuxErr("display-message", "-p", "-t", mid, "#{pane_width}")
+		r, _ := s.tmuxErr("display-message", "-p", "-t", right, "#{pane_width}")
+		return strings.TrimSpace(m) + "," + strings.TrimSpace(r)
+	}
+	if got := widths(); got != "60,60" {
+		t.Fatalf("columns = %s after sidebar open, want 60,60", got)
+	}
+
+	sidebarIn := func(win string) func() bool {
+		return func() bool {
+			cur, _ := s.tmuxErr("display-message", "-t", win, "-p", "#{window_id}")
+			sidewin, _ := s.tmuxErr("display-message", "-t", side, "-p", "#{window_id}")
+			return cur != "" && cur == sidewin
+		}
+	}
+	s.tmux("new-window", "-t", "work") // window the sidebar will bounce via
+	for i := range 5 {
+		s.tmux("select-window", "-t", "work:1")
+		waitFor(t, "sidebar in window 1", 5*time.Second, sidebarIn("work:1"))
+		s.tmux("select-window", "-t", "work:0")
+		waitFor(t, "sidebar in window 0", 5*time.Second, sidebarIn("work:0"))
+		if got := widths(); got != "60,60" {
+			t.Fatalf("columns drifted to %s after %d switches, want 60,60", got, i+1)
+		}
+	}
+}
+
 // TestFollowWindowAndSelfHeal: the sidebar pane follows the active window,
 // and stale state self-heals when the sidebar process is gone.
 func TestFollowWindowAndSelfHeal(t *testing.T) {
