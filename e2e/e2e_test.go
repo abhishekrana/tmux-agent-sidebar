@@ -499,10 +499,8 @@ func TestJumpViaEnter(t *testing.T) {
 	})
 }
 
-// TestClickJump is the full reproduction of the reported bug, mouse and
-// all: single-click the other session's agent in the sidebar, land in
-// that session, and see its own sidebar highlight the clicked agent —
-// with no second click and no tick-latency.
+// TestClickJump: a single mouse click on another session's agent must
+// switch there and highlight it in that session's own sidebar.
 func TestClickJump(t *testing.T) {
 	if _, err := exec.LookPath("script"); err != nil {
 		t.Skip("script(1) not available for pty client")
@@ -584,8 +582,7 @@ func TestFollowWindowAndSelfHeal(t *testing.T) {
 		sidewin, _ := s.tmuxErr("display-message", "-t", side, "-p", "#{window_id}")
 		return cur != "" && cur == sidewin
 	})
-	// The move must not steal focus or the window name (join-pane -d):
-	// the user reported focus flicking to the sidebar on window switch.
+	// The move must not steal focus or the window name (join-pane -d).
 	if active, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{pane_id}"); active == side {
 		t.Error("sidebar stole focus after following the window")
 	}
@@ -605,13 +602,9 @@ func TestFollowWindowAndSelfHeal(t *testing.T) {
 	}
 }
 
-// TestStatusBarTabClick guards window-tab clicking while the follow hook
-// moves the sidebar around. Investigating the "changing tabs needs
-// double click" report showed the cause is stock tmux, sidebar or not:
-// rapid clicks chain into Second/TripleClick events that are unbound by
-// default and silently dropped. With those bound like a single click
-// (the fix this test documents), every click must switch — including
-// mid-follow.
+// TestStatusBarTabClick: with Second/TripleClick1Status bound (stock
+// tmux drops chained rapid clicks — README tip), every tab click must
+// switch, even while the follow hook is moving the sidebar.
 func TestStatusBarTabClick(t *testing.T) {
 	s := start(t)
 	s.newSession("work")
@@ -665,11 +658,9 @@ func TestStatusBarTabClick(t *testing.T) {
 	}
 }
 
-// TestResurrectOrphanAdoption: a sidebar pane restored by tmux-resurrect
-// has no @sidebar_pane/@sidebar_on options and no session hook. open.sh
-// must adopt it — re-stamp the options and hook — instead of opening a
-// second sidebar next to it, and toggle-off must kill it even though it
-// was never tracked.
+// TestResurrectOrphanAdoption: open.sh must adopt an untracked sidebar
+// pane (resurrect restores no options/hooks) instead of opening a second
+// one, and toggle-off must kill it.
 func TestResurrectOrphanAdoption(t *testing.T) {
 	s := start(t)
 	s.newSession("work")

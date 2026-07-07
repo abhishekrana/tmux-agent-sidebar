@@ -18,8 +18,8 @@ const (
 	spinnerInterval  = 200 * time.Millisecond
 	snapshotInterval = time.Second
 
-	// wait-for channel signalled by jumps so every sidebar adopts the
-	// shared selection immediately instead of on its next snapshot tick.
+	// wait-for channel signalled by jumps; sidebars adopt the shared
+	// selection immediately instead of on the next tick.
 	refreshChannel = "tmux-agent-sidebar-refresh"
 )
 
@@ -68,9 +68,7 @@ func NewLive(theme Theme) App {
 		debug:    strings.TrimSpace(debug),
 	}
 	app.setSnapshot(tmux.Snapshot(runner, app.branches, app.current))
-	// Every session runs its own sidebar; selection is shared through the
-	// global @sidebar_selected option so a jump made in one sidebar shows
-	// up highlighted in the sidebar you land in.
+	// Selection is shared across sidebars via the global @sidebar_selected.
 	if sel, err := runner.Run("show-option", "-gqv", "@sidebar_selected"); err == nil {
 		app.lastSel = strings.TrimSpace(sel)
 		app.selectPane(app.lastSel)
@@ -123,9 +121,8 @@ func (a App) snapshotTick() tea.Cmd {
 	})
 }
 
-// waitRefresh blocks on the wait-for channel until a jump signals it,
-// then re-reads the shared selection. Runs as a background tea.Cmd; the
-// blocked `tmux wait-for` child dies with the pane, so nothing leaks.
+// waitRefresh blocks until a jump signals the channel, then re-reads the
+// shared selection. The blocked wait-for child dies with the pane.
 func (a App) waitRefresh() tea.Cmd {
 	return func() tea.Msg {
 		if _, err := a.runner.Run("wait-for", refreshChannel); err != nil {
@@ -328,9 +325,7 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 		"-t", sess.Name, ";",
 		"select-window", "-t", fmt.Sprintf("%s:%d", sess.Name, ag.WindowIndex), ";",
 		"select-pane", "-t", ag.PaneID, ";",
-		// Publish the selection so the target session's own sidebar
-		// (a separate process with its own cursor) highlights it too,
-		// and wake every sidebar so it adopts it now, not on next tick.
+		// Publish + signal so every sidebar highlights it immediately.
 		"set-option", "-g", "@sidebar_selected", ag.PaneID, ";",
 		"wait-for", "-S", refreshChannel,
 	)

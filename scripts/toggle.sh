@@ -12,8 +12,7 @@ PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 close_in() {
     local session=$1 panes id
-    # Kill every pane running the sidebar, tracked or not — orphans
-    # restored by tmux-resurrect have no @sidebar_pane pointing at them.
+    # Kill every sidebar pane, tracked or not (resurrect orphans).
     panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || panes=""
     for id in $(awk '$2 == "tmux-agent-sidebar" {print $1}' <<<"$panes"); do
         tmux kill-pane -t "$id"

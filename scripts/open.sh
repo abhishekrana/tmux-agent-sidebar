@@ -15,10 +15,7 @@ theme=$(tmux show-option -gqv @agent-sidebar-theme)
 theme=${theme:-solarized-light}
 
 panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || exit 0
-# Any pane already running the sidebar counts: our own from a previous
-# open, or an orphan restored by tmux-resurrect (options and hooks are
-# not saved, so re-stamp them and adopt the pane instead of stacking a
-# second sidebar next to it).
+# Adopt any pane already running the sidebar (ours or a resurrect orphan).
 alive=$(awk '$2 == "tmux-agent-sidebar" {print $1; exit}' <<<"$panes")
 if [ -n "$alive" ]; then
     tmux set-option -t "$session" -q @sidebar_pane "$alive"
@@ -28,8 +25,7 @@ if [ -n "$alive" ]; then
     exit 0
 fi
 
-# Split off the session's active pane; -d keeps focus (and the window's
-# automatic-rename) where it was instead of flicking to the sidebar.
+# -d: don't steal focus or the window's automatic-rename.
 active=$(tmux display-message -p -t "$session" '#{pane_id}')
 new=$(tmux split-window -dhbf -l "$width" -t "$active" -P -F '#{pane_id}' "$BIN run --theme $theme")
 tmux set-option -t "$session" -q @sidebar_pane "$new"
