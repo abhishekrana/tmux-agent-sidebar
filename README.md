@@ -34,7 +34,7 @@ onto its tmux pane, and the sidebar picks it up on its 1s tick.
 
 - tmux ≥ 3.2
 - Claude Code ≥ 2.x (hooks)
-- Go ≥ 1.22 (to build; only needed once)
+- Go ≥ 1.25 (to build; only needed once)
 - git (for the branch line)
 
 ## Install (TPM)
@@ -97,6 +97,33 @@ set -g @agent-sidebar-width '30'             # sidebar width in columns
 set -g @agent-sidebar-theme 'solarized-light' # or 'dark'
 set -g @agent-sidebar-focus 'off'            # 'on' focuses sidebar on open
 ```
+
+## Development
+
+```bash
+make build          # build bin/tmux-agent-sidebar
+make test           # unit tests (hook state machine, installer, snapshot parsing)
+bin/tmux-agent-sidebar mockup   # render the UI with fake data in any pane
+```
+
+For a local checkout instead of TPM, add to `~/.tmux.conf`:
+
+```tmux
+run-shell ~/path/to/tmux-agent-sidebar/agent-sidebar.tmux
+```
+
+Notes for hacking:
+
+- `hook` must never exit non-zero or block — Claude Code waits on it.
+- Hooks only load from `~/.claude/settings.json` (user level) or
+  `.claude/settings{,.local}.json` (project level). A user-level
+  `settings.local.json` is silently ignored by Claude Code.
+- `toggle.sh` receives session/pane as format-expanded arguments:
+  `run-shell` does not set `$TMUX_PANE`, and a bare `display-message`
+  resolves against the attached client — the wrong session when the
+  binding fires elsewhere.
+- tmux quirk: only trim newlines from `list-panes` output; trimming
+  whitespace eats trailing empty format fields of the last line.
 
 ## How it works
 
