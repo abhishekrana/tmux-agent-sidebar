@@ -1,66 +1,50 @@
 #!/usr/bin/env bash
-# Toggle the agent sidebar for the current session (bound to prefix+e).
+# Global sidebar toggle (bound to prefix+e).
 #
-# On:  full-height pane on the left of the current window running the
-#      sidebar TUI, plus session hooks that drag the pane along when the
-#      active window changes (see follow.sh).
-# Off: kill the pane, drop the session options and hooks.
+# If any session has a live sidebar: close them all everywhere.
+# Otherwise: open one in every session, and install a global
+# session-created hook so sessions born later get one too.
+# State is derived from live panes, never from a stored flag, so it
+# can't go stale.
 set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$PLUGIN_DIR/bin/tmux-agent-sidebar"
 
-# Fires on any active-window change of the session, whatever command
-# caused it (select-window, next-window, M-1..9 bindings, new-window...).
-FOLLOW_HOOK=session-window-changed
-
-# Session and pane arrive as arguments, expanded by tmux at fire time
-# ("run-shell 'toggle.sh #{session_name} #{pane_id}'"): a bare
-# display-message here would resolve against the attached client — the
-# wrong session when invoked for another one, and run-shell does not
-# set TMUX_PANE.
-session=${1:?usage: toggle.sh <session> <pane>}
-anchor=${2:?usage: toggle.sh <session> <pane>}
-width=$(tmux show-option -gqv @agent-sidebar-width)
-width=${width:-30}
-theme=$(tmux show-option -gqv @agent-sidebar-theme)
-theme=${theme:-solarized-light}
-
-pane=$(tmux show-option -t "$session" -qv @sidebar_pane)
-
-# grep on a captured variable, not on a pipe: grep -q closing a pipe
-# early makes list-panes exit on SIGPIPE, which pipefail turns into a
-# false negative.
-sidebar_alive() {
-    [ -n "$pane" ] || return 1
-    local panes
-    panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || return 1
-    grep -q "^$pane tmux-agent-sidebar$" <<<"$panes"
-}
-
-clear_state() {
+close_in() {
+    local session=$1 pane panes
+    pane=$(tmux show-option -t "$session" -qv @sidebar_pane)
+    panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || panes=""
+    if [ -n "$pane" ] && grep -q "^$pane tmux-agent-sidebar$" <<<"$panes"; then
+        tmux kill-pane -t "$pane"
+    fi
     tmux set-option -t "$session" -uq @sidebar_pane
     tmux set-option -t "$session" -uq @sidebar_on
-    tmux set-hook -u -t "$session" "$FOLLOW_HOOK" 2>/dev/null || true
+    tmux set-option -t "$session" -uq @sidebar_moving
+    tmux set-hook -u -t "$session" session-window-changed 2>/dev/null || true
 }
 
-if sidebar_alive; then
-    tmux kill-pane -t "$pane"
-    clear_state
-    exit 0
+any_alive() {
+    local session pane panes
+    while IFS= read -r session; do
+        pane=$(tmux show-option -t "$session" -qv @sidebar_pane)
+        [ -n "$pane" ] || continue
+        panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || continue
+        if grep -q "^$pane tmux-agent-sidebar$" <<<"$panes"; then
+            return 0
+        fi
+    done < <(tmux list-sessions -F '#{session_name}')
+    return 1
+}
+
+if any_alive; then
+    tmux set-hook -gu session-created 2>/dev/null || true
+    while IFS= read -r session; do
+        close_in "$session"
+    done < <(tmux list-sessions -F '#{session_name}')
+else
+    while IFS= read -r session; do
+        "$PLUGIN_DIR/scripts/open.sh" "$session"
+    done < <(tmux list-sessions -F '#{session_name}')
+    tmux set-hook -g session-created \
+        "run-shell '$PLUGIN_DIR/scripts/open.sh #{hook_session_name}'"
 fi
-
-# Stale state (sidebar died, tmux-resurrect corpse, ...): reset, then open.
-clear_state
-
-active=$anchor
-new=$(tmux split-window -hbf -l "$width" -t "$anchor" -P -F '#{pane_id}' "$BIN run --theme $theme")
-tmux set-option -t "$session" -q @sidebar_pane "$new"
-tmux set-option -t "$session" -q @sidebar_on 1
-
-focus=$(tmux show-option -gqv @agent-sidebar-focus)
-if [ "$focus" != "on" ]; then
-    tmux select-pane -t "$active"
-fi
-
-tmux set-hook -t "$session" "$FOLLOW_HOOK" "run-shell '$PLUGIN_DIR/scripts/follow.sh #{session_name}'"

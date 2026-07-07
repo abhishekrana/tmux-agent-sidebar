@@ -23,9 +23,8 @@ fi
 
 key=$(tmux show-option -gqv @agent-sidebar-key)
 key=${key:-e}
-# Formats expand when the binding fires, anchoring the script to the
-# session/pane where the key was pressed.
-tmux bind-key "$key" run-shell "$CURRENT_DIR/scripts/toggle.sh '#{session_name}' '#{pane_id}'"
+# Global toggle: opens/closes the sidebar in every session at once.
+tmux bind-key "$key" run-shell "$CURRENT_DIR/scripts/toggle.sh"
 
 # Replace the #{agent_sidebar_status} placeholder in the status line
 # with the live segment (standard TPM interpolation pattern).

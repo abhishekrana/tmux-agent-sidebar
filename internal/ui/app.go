@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -280,6 +282,14 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
+		if !a.mockup {
+			// The toggle is global: q hides the sidebar everywhere,
+			// same as prefix+e. The script also kills this pane.
+			if exe, err := os.Executable(); err == nil {
+				script := filepath.Join(filepath.Dir(filepath.Dir(exe)), "scripts", "toggle.sh")
+				_ = exec.Command("bash", script).Start()
+			}
+		}
 		return a, tea.Quit
 	case "j", "down":
 		a.moveCursor(1)
