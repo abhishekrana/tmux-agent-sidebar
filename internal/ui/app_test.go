@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/abhishekrana/tmux-agent-sidebar/internal/model"
 )
 
@@ -115,6 +117,33 @@ func TestActivatePublishesSelectionAndSignals(t *testing.T) {
 		if !strings.Contains(jump, want) {
 			t.Errorf("jump command missing %q:\n%s", want, jump)
 		}
+	}
+}
+
+// Terminals eat the press of a focusing click but deliver the release,
+// so the jump must fire on release and ignore the press.
+func TestClickJumpsOnReleaseNotPress(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r)
+	a.width, a.height = 30, 20
+
+	// Body rows: 0 alpha-1 header, 1-2 agent %0, 3 alpha-2 header,
+	// 4-5 agent %6; screen y = body row + 2 header lines.
+	press := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: 6}
+	m, _ := a.Update(press)
+	a = m.(App)
+	if len(r.calls) != 0 {
+		t.Fatalf("press must not jump, got %v", r.calls)
+	}
+
+	release := tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, Y: 6}
+	m, _ = a.Update(release)
+	a = m.(App)
+	if a.cursor != 3 {
+		t.Errorf("cursor = %d after release on %%6's row, want 3", a.cursor)
+	}
+	if len(r.calls) == 0 || !strings.Contains(strings.Join(r.calls[len(r.calls)-1], " "), "switch-client") {
+		t.Errorf("release did not jump: calls %v", r.calls)
 	}
 }
 

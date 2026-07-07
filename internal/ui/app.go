@@ -291,7 +291,9 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 		a.moveCursor(-1)
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelDown:
 		a.moveCursor(1)
-	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonLeft:
+	// Jump on release, not press: terminals eat the press of a click
+	// that also focuses their window, but always deliver the release.
+	case m.Action == tea.MouseActionRelease && m.Button == tea.MouseButtonLeft:
 		l := a.layout()
 		idx := l.start + m.Y - 2 // 2 header lines above the body
 		a.debugf("click start=%d avail=%d idx=%d owners=%d", l.start, l.avail, idx, len(l.owners))

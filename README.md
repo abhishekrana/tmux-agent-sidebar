@@ -80,17 +80,21 @@ Agent states: `working` (yellow, spinner) · `permission` (red) ·
 `asking` (orange) · `done` (green until you visit the pane, then gray) ·
 `idle` (gray). Each agent shows its git branch and live subagent count.
 
-## Tip: rapid window-tab clicks
+## Tip: window-tab clicks that need a second try
 
-Unrelated to this plugin but easy to blame on it: stock tmux turns the
-2nd/3rd of quick successive clicks into `SecondClick`/`TripleClick`
-events, which are unbound on the status line — so fast tab clicks get
-silently dropped. Make every click count:
+Unrelated to this plugin but easy to blame on it — two stock-tmux
+reasons a status-line tab click gets dropped: rapid clicks chain into
+`SecondClick`/`TripleClick` events (unbound by default), and terminals
+eat the *press* of a click that also focuses their window, delivering
+only the release. Make every click count:
 
 ```tmux
 bind -n SecondClick1Status switch-client -t =
 bind -n TripleClick1Status switch-client -t =
+bind -n MouseUp1Status switch-client -t =
 ```
+
+The sidebar itself jumps on release for the same reason.
 
 ## tmux-resurrect / continuum
 

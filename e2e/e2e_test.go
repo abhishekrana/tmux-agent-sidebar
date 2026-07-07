@@ -233,14 +233,24 @@ func clientClick(stdin io.Writer, col, row int) {
 // so the TUI's real mouse path runs.
 func (s *server) click(pane string, col, row int) {
 	s.t.Helper()
-	for _, suffix := range []string{"M", "m"} { // press, then release
-		seq := fmt.Sprintf("\x1b[<0;%d;%d%s", col, row, suffix)
-		args := []string{"send-keys", "-H", "-t", pane}
-		for _, b := range []byte(seq) {
-			args = append(args, fmt.Sprintf("%02x", b))
-		}
-		s.tmux(args...)
+	s.mouse(pane, col, row, "M") // press
+	s.mouse(pane, col, row, "m") // release
+}
+
+// releaseClick sends only the release, like a terminal that ate the
+// press of a window-focusing click.
+func (s *server) releaseClick(pane string, col, row int) {
+	s.t.Helper()
+	s.mouse(pane, col, row, "m")
+}
+
+func (s *server) mouse(pane string, col, row int, suffix string) {
+	seq := fmt.Sprintf("\x1b[<0;%d;%d%s", col, row, suffix)
+	args := []string{"send-keys", "-H", "-t", pane}
+	for _, b := range []byte(seq) {
+		args = append(args, fmt.Sprintf("%02x", b))
 	}
+	s.tmux(args...)
 }
 
 func waitFor(t *testing.T, desc string, timeout time.Duration, cond func() bool) {
@@ -564,6 +574,25 @@ func TestClickJump(t *testing.T) {
 			}
 		}
 		return true
+	})
+
+	// Release-only click (terminal ate the focusing press) back on aaa's
+	// agent must jump too.
+	lines = strings.Split(s.captureText(sideB), "\n")
+	backRow := -1
+	for i, l := range lines {
+		if strings.Contains(l, "claude") {
+			backRow = i + 1 // first agent listed is aaa's
+			break
+		}
+	}
+	if backRow < 0 {
+		t.Fatal("aaa's agent row not found in bbb's sidebar")
+	}
+	s.releaseClick(sideB, 5, backRow)
+	waitFor(t, "release-only click switched back to aaa", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "aaa")
 	})
 }
 
