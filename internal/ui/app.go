@@ -21,7 +21,10 @@ const (
 
 type tickMsg time.Time
 
-type snapMsg model.Snapshot
+type snapMsg struct {
+	snap model.Snapshot
+	sel  string // global @sidebar_selected at snapshot time
+}
 
 // App is the Bubble Tea model for the sidebar.
 //
@@ -43,6 +46,7 @@ type App struct {
 	branches *tmux.BranchCache
 	current  string // session the sidebar pane lives in
 	debug    string // log file path (@agent-sidebar-debug), "" = off
+	lastSel  string // last @sidebar_selected value we adopted
 }
 
 // NewLive builds the sidebar against the real tmux server.
@@ -57,6 +61,13 @@ func NewLive(theme Theme) App {
 		debug:    strings.TrimSpace(debug),
 	}
 	app.setSnapshot(tmux.Snapshot(runner, app.branches, app.current))
+	// Every session runs its own sidebar; selection is shared through the
+	// global @sidebar_selected option so a jump made in one sidebar shows
+	// up highlighted in the sidebar you land in.
+	if sel, err := runner.Run("show-option", "-gqv", "@sidebar_selected"); err == nil {
+		app.lastSel = strings.TrimSpace(sel)
+		app.selectPane(app.lastSel)
+	}
 	return app
 }
 
@@ -97,8 +108,25 @@ func (a *App) setSnapshot(snap model.Snapshot) {
 
 func (a App) snapshotTick() tea.Cmd {
 	return tea.Tick(snapshotInterval, func(time.Time) tea.Msg {
-		return snapMsg(tmux.Snapshot(a.runner, a.branches, a.current))
+		sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
+		return snapMsg{
+			snap: tmux.Snapshot(a.runner, a.branches, a.current),
+			sel:  strings.TrimSpace(sel),
+		}
 	})
+}
+
+// selectPane moves the cursor to the block owning pane, if it's listed.
+func (a *App) selectPane(pane string) {
+	if pane == "" {
+		return
+	}
+	for i, b := range a.blocks {
+		if b.selectable() && a.snap.Sessions[b.session].Agents[b.agent].PaneID == pane {
+			a.cursor = i
+			return
+		}
+	}
 }
 
 // NewMockup builds the sidebar with representative fake data for visual
@@ -177,7 +205,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.frame++
 		return a, tick()
 	case snapMsg:
-		a.setSnapshot(model.Snapshot(msg))
+		a.setSnapshot(msg.snap)
+		if msg.sel != a.lastSel {
+			a.lastSel = msg.sel
+			a.selectPane(msg.sel)
+		}
 		return a, a.snapshotTick()
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
@@ -269,8 +301,12 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 	args = append(args,
 		"-t", sess.Name, ";",
 		"select-window", "-t", fmt.Sprintf("%s:%d", sess.Name, ag.WindowIndex), ";",
-		"select-pane", "-t", ag.PaneID,
+		"select-pane", "-t", ag.PaneID, ";",
+		// Publish the selection so the target session's own sidebar
+		// (a separate process with its own cursor) highlights it too.
+		"set-option", "-g", "@sidebar_selected", ag.PaneID,
 	)
+	a.lastSel = ag.PaneID
 	_, err := a.runner.Run(args...)
 	a.debugf("jump session=%s window=%d pane=%s args=%v err=%v", sess.Name, ag.WindowIndex, ag.PaneID, args, err)
 	if err != nil {
