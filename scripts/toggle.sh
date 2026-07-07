@@ -31,6 +31,7 @@ any_alive() {
 
 if any_alive; then
     tmux set-hook -gu session-created 2>/dev/null || true
+    tmux set-hook -gu client-session-changed 2>/dev/null || true
     while IFS= read -r session; do
         close_in "$session"
     done < <(tmux list-sessions -F '#{session_name}')

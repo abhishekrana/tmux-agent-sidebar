@@ -26,12 +26,10 @@ const (
 type tickMsg time.Time
 
 type snapMsg struct {
-	snap model.Snapshot
-	sel  string // global @sidebar_selected at snapshot time
+	snap   model.Snapshot
+	sel    string // global @sidebar_selected at snapshot time
+	signal bool   // woken by the wait-for channel, not the 1s tick
 }
-
-// refreshMsg carries the shared selection after a wait-for wake-up.
-type refreshMsg string
 
 // App is the Bubble Tea model for the sidebar.
 //
@@ -54,6 +52,7 @@ type App struct {
 	current  string // session the sidebar pane lives in
 	debug    string // log file path (@agent-sidebar-debug), "" = off
 	lastSel  string // last @sidebar_selected value we adopted
+	attached string // attached-session set of the last snapshot
 }
 
 // NewLive builds the sidebar against the real tmux server.
@@ -68,6 +67,7 @@ func NewLive(theme Theme) App {
 		debug:    strings.TrimSpace(debug),
 	}
 	app.setSnapshot(tmux.Snapshot(runner, app.branches, app.current))
+	app.attached = attachedKey(app.snap)
 	// Selection is shared across sidebars via the global @sidebar_selected.
 	if sel, err := runner.Run("show-option", "-gqv", "@sidebar_selected"); err == nil {
 		app.lastSel = strings.TrimSpace(sel)
@@ -75,6 +75,17 @@ func NewLive(theme Theme) App {
 	}
 	app.register()
 	return app
+}
+
+// attachedKey fingerprints which sessions have a client attached.
+func attachedKey(snap model.Snapshot) string {
+	var names []string
+	for _, s := range snap.Sessions {
+		if s.Attached {
+			names = append(names, s.Name)
+		}
+	}
+	return strings.Join(names, ",")
 }
 
 // register stamps this sidebar's session options and follow hook, so a
@@ -90,7 +101,10 @@ func (a App) register() {
 		"set-option", "-t", a.current, "-q", "@sidebar_pane", pane, ";",
 		"set-option", "-t", a.current, "-q", "@sidebar_on", "1", ";",
 		"set-hook", "-t", a.current, "session-window-changed",
-		"run-shell '"+follow+" #{session_name}'",
+		"run-shell '"+follow+" #{session_name}'", ";",
+		// Session switches wake every sidebar so the highlight follows.
+		"set-hook", "-g", "client-session-changed",
+		"run-shell 'tmux wait-for -S "+refreshChannel+"'",
 	)
 }
 
@@ -131,23 +145,51 @@ func (a *App) setSnapshot(snap model.Snapshot) {
 
 func (a App) snapshotTick() tea.Cmd {
 	return tea.Tick(snapshotInterval, func(time.Time) tea.Msg {
-		sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
-		return snapMsg{
-			snap: tmux.Snapshot(a.runner, a.branches, a.current),
-			sel:  strings.TrimSpace(sel),
-		}
+		return a.gather(false)
 	})
 }
 
-// waitRefresh blocks until a jump signals the channel, then re-reads the
-// shared selection. The blocked wait-for child dies with the pane.
+// waitRefresh blocks until a jump or session switch signals the channel.
+// The blocked wait-for child dies with the pane.
 func (a App) waitRefresh() tea.Cmd {
 	return func() tea.Msg {
 		if _, err := a.runner.Run("wait-for", refreshChannel); err != nil {
 			return nil // degrade to tick-based adoption
 		}
-		sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
-		return refreshMsg(strings.TrimSpace(sel))
+		return a.gather(true)
+	}
+}
+
+// gather takes a fresh snapshot plus the shared selection.
+func (a App) gather(signal bool) snapMsg {
+	sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
+	return snapMsg{
+		snap:   tmux.Snapshot(a.runner, a.branches, a.current),
+		sel:    strings.TrimSpace(sel),
+		signal: signal,
+	}
+}
+
+// focusNewlyAttached selects the agent of a session that just gained a
+// client (a session switch made outside the sidebar).
+func (a *App) focusNewlyAttached() {
+	old := map[string]bool{}
+	for n := range strings.SplitSeq(a.attached, ",") {
+		old[n] = true
+	}
+	for _, s := range a.snap.Sessions {
+		if !s.Attached || old[s.Name] || len(s.Agents) == 0 {
+			continue
+		}
+		pane := s.Agents[0].PaneID
+		for _, ag := range s.Agents {
+			if ag.Focused {
+				pane = ag.PaneID
+				break
+			}
+		}
+		a.selectPane(pane)
+		return
 	}
 }
 
@@ -246,17 +288,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tick()
 	case snapMsg:
 		a.setSnapshot(msg.snap)
-		if msg.sel != a.lastSel {
+		key := attachedKey(a.snap)
+		switch {
+		case msg.sel != a.lastSel: // explicit jump wins
 			a.lastSel = msg.sel
 			a.selectPane(msg.sel)
+		case key != a.attached: // session switch: follow to its agent
+			a.focusNewlyAttached()
+		}
+		a.attached = key
+		if msg.signal {
+			return a, a.waitRefresh()
 		}
 		return a, a.snapshotTick()
-	case refreshMsg:
-		if string(msg) != a.lastSel {
-			a.lastSel = string(msg)
-			a.selectPane(string(msg))
-		}
-		return a, a.waitRefresh()
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		return a, nil

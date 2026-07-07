@@ -57,7 +57,11 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 		name := f[0]
 		sess := bySession[name]
 		if sess == nil {
-			sess = &model.Session{Name: name, Current: name == currentSession}
+			sess = &model.Session{
+				Name:     name,
+				Current:  name == currentSession,
+				Attached: f[1] != "0" && f[1] != "",
+			}
 			bySession[name] = sess
 		}
 		if f[9] != "1" || !agentCommands[f[7]] {
@@ -88,6 +92,7 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 			Seen:       seen,
 			Since:      time.Unix(since, 0),
 			Subagents:  subagents,
+			Focused:    paneActive && windowActive,
 		})
 	}
 

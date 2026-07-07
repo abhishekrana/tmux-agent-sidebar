@@ -80,15 +80,45 @@ func TestSnapMsgUnknownPaneKeepsCursor(t *testing.T) {
 	}
 }
 
-func TestRefreshMsgAdoptsSelectionImmediately(t *testing.T) {
+func TestSignalSnapAdoptsSelectionImmediately(t *testing.T) {
 	a := testApp(&fakeRunner{})
-	m, cmd := a.Update(refreshMsg("%6"))
+	m, cmd := a.Update(snapMsg{snap: twoSessionSnap(), sel: "%6", signal: true})
 	a = m.(App)
 	if a.cursor != 3 {
-		t.Errorf("cursor = %d after refresh, want 3", a.cursor)
+		t.Errorf("cursor = %d after signal refresh, want 3", a.cursor)
 	}
 	if cmd == nil {
-		t.Error("refreshMsg must re-arm waitRefresh, got nil cmd")
+		t.Error("signal snapMsg must re-arm waitRefresh, got nil cmd")
+	}
+}
+
+// A session switch made outside the sidebar moves the highlight to the
+// newly attached session's focused agent.
+func TestAttachedSessionChangeMovesHighlight(t *testing.T) {
+	a := testApp(&fakeRunner{})
+	snap := twoSessionSnap()
+	snap.Sessions[0].Attached = true
+	m, _ := a.Update(snapMsg{snap: snap, sel: ""})
+	a = m.(App)
+	if a.cursor != 1 {
+		t.Fatalf("cursor = %d after alpha-1 attach, want 1", a.cursor)
+	}
+
+	snap = twoSessionSnap()
+	snap.Sessions[1].Attached = true
+	snap.Sessions[1].Agents[0].Focused = true
+	m, _ = a.Update(snapMsg{snap: snap, sel: ""})
+	a = m.(App)
+	if a.cursor != 3 {
+		t.Errorf("cursor = %d after switch to alpha-2, want 3", a.cursor)
+	}
+
+	// No change: local j/k position must survive the next tick.
+	a.moveCursor(-1)
+	m, _ = a.Update(snapMsg{snap: snap, sel: ""})
+	a = m.(App)
+	if a.cursor != 1 {
+		t.Errorf("cursor = %d after unchanged tick, want 1", a.cursor)
 	}
 }
 

@@ -724,6 +724,58 @@ func TestResurrectOrphanAdoption(t *testing.T) {
 	})
 }
 
+// TestSessionSwitchMovesHighlight: switching sessions outside the
+// sidebar (keys, session buttons) must move the highlight to the newly
+// attached session's agent — instantly via the client-session-changed
+// signal, not on the next tick.
+func TestSessionSwitchMovesHighlight(t *testing.T) {
+	s := start(t)
+	s.newSession("aaa")
+	s.newSession("bbb")
+	s.agentPane("aaa")
+	s.agentPane("bbb")
+	s.tmux("set-option", "-g", "window-size", "manual")
+
+	s.script("toggle.sh")
+	sideA, sideB := s.sidebarPane("aaa"), s.sidebarPane("bbb")
+	waitFor(t, "sidebars ready", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(sideA), "bbb") &&
+			strings.Contains(s.capture(sideB), "bbb")
+	})
+
+	s.ptyClient("aaa")
+	tty := strings.TrimSpace(s.tmux("list-clients", "-F", "#{client_tty}"))
+	waitFor(t, "highlight on aaa's agent (above the bbb header)", 2*time.Second, func() bool {
+		capture := s.capture(sideA)
+		_, lineNo := highlightedAgentLine(capture)
+		for i, l := range strings.Split(capture, "\n") {
+			if strings.Contains(l, "bbb") {
+				return lineNo >= 0 && lineNo < i
+			}
+		}
+		return false
+	})
+
+	// External switch, no sidebar involved.
+	s.tmux("switch-client", "-c", tty, "-t", "bbb")
+	waitFor(t, "both sidebars highlight bbb's agent", 700*time.Millisecond, func() bool {
+		for _, side := range []string{sideA, sideB} {
+			capture := s.capture(side)
+			_, lineNo := highlightedAgentLine(capture)
+			bbbLine := -1
+			for i, l := range strings.Split(capture, "\n") {
+				if strings.Contains(l, "bbb") {
+					bbbLine = i
+				}
+			}
+			if lineNo < 0 || lineNo < bbbLine {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 // TestSidebarSelfRegisters: a sidebar started outside open.sh (as a
 // resurrect restore does) must stamp its own options and follow hook.
 func TestSidebarSelfRegisters(t *testing.T) {

@@ -51,13 +51,15 @@ type Agent struct {
 	Seen        bool      // done + visited since finishing: render dimmed
 	Since       time.Time // last state transition
 	Subagents   int
+	Focused     bool // active pane of the session's active window
 }
 
 // Session groups the agents of one tmux session.
 type Session struct {
-	Name    string
-	Current bool // the session the sidebar's client is attached to
-	Agents  []Agent
+	Name     string
+	Current  bool // the session the sidebar pane lives in
+	Attached bool // a client is attached to this session
+	Agents   []Agent
 }
 
 // Snapshot is everything the sidebar shows; sessions are ordered
