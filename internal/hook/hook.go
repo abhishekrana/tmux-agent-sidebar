@@ -1,0 +1,134 @@
+// Package hook turns Claude Code hook events into tmux pane options.
+//
+// Claude Code runs `tmux-agent-sidebar hook` for each lifecycle event;
+// the event JSON arrives on stdin and $TMUX_PANE identifies the pane the
+// agent lives in (inherited from the pane's environment). State is
+// stamped as pane-scoped user options, which die with the pane:
+//
+//	@agent_present    "1" while a Claude session is registered
+//	@agent_state      idle|working|permission|question|done
+//	@agent_since      unix seconds of the last state *change*
+//	@agent_seen       "1" once the user visited the pane after done
+//	@agent_session_id Claude session id
+//	@agent_subagents  count of live subagents
+package hook
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/abhishekrana/tmux-agent-sidebar/internal/model"
+	"github.com/abhishekrana/tmux-agent-sidebar/internal/tmux"
+)
+
+// Event is the subset of Claude Code's hook JSON the sidebar needs.
+type Event struct {
+	Name             string `json:"hook_event_name"`
+	SessionID        string `json:"session_id"`
+	NotificationType string `json:"notification_type"`
+}
+
+// Effect is what an event should do to the pane options.
+type Effect struct {
+	State         model.AgentState // "" = leave state alone
+	Register      bool             // stamp presence + session id
+	ClearAll      bool             // session ended: drop everything
+	SubagentDelta int
+}
+
+// Decide maps a hook event to its effect. Pure; covered by unit tests.
+func Decide(ev Event) Effect {
+	switch ev.Name {
+	case "SessionStart":
+		return Effect{Register: true, State: model.StateIdle}
+	case "UserPromptSubmit", "PreToolUse":
+		// PreToolUse also registers: it repairs presence for sessions
+		// that started before the hooks were installed.
+		return Effect{Register: true, State: model.StateWorking}
+	case "PermissionRequest":
+		return Effect{State: model.StatePermission}
+	case "Notification":
+		switch ev.NotificationType {
+		case "permission_prompt":
+			return Effect{State: model.StatePermission}
+		case "agent_needs_input", "elicitation_dialog":
+			return Effect{State: model.StateQuestion}
+		}
+		// idle_prompt is Claude's periodic "waiting for input" nudge:
+		// flipping a happily-done agent to "asking" would cry wolf.
+		return Effect{}
+	case "Stop":
+		return Effect{State: model.StateDone}
+	case "SubagentStart":
+		return Effect{SubagentDelta: 1}
+	case "SubagentStop":
+		return Effect{SubagentDelta: -1}
+	case "SessionEnd":
+		return Effect{ClearAll: true}
+	}
+	return Effect{}
+}
+
+// allOptions is everything Apply may set; ClearAll unsets each.
+var allOptions = []string{
+	"@agent_present", "@agent_state", "@agent_since",
+	"@agent_seen", "@agent_session_id", "@agent_subagents",
+}
+
+// Apply writes an effect to the pane's options. now is injected for
+// testability.
+func Apply(r tmux.Runner, pane string, ev Event, ef Effect, now time.Time) error {
+	if ef.ClearAll {
+		args := []string{}
+		for i, name := range allOptions {
+			if i > 0 {
+				args = append(args, ";")
+			}
+			args = append(args, "set-option", "-pqu", "-t", pane, name)
+		}
+		_, err := r.Run(args...)
+		return err
+	}
+
+	set := [][2]string{}
+	if ef.Register {
+		set = append(set, [2]string{"@agent_present", "1"})
+		if ev.SessionID != "" {
+			set = append(set, [2]string{"@agent_session_id", ev.SessionID})
+		}
+	}
+	if ef.SubagentDelta != 0 {
+		n, _ := strconv.Atoi(tmux.PaneOption(r, pane, "@agent_subagents"))
+		n = max(n+ef.SubagentDelta, 0)
+		set = append(set, [2]string{"@agent_subagents", strconv.Itoa(n)})
+	}
+	if ef.State != "" {
+		// Only a state *change* resets the clock and the seen flag:
+		// PreToolUse fires constantly while working and must not
+		// zero the elapsed time on every tool call.
+		cur := tmux.PaneOption(r, pane, "@agent_state")
+		if cur != string(ef.State) {
+			set = append(set,
+				[2]string{"@agent_state", string(ef.State)},
+				[2]string{"@agent_since", strconv.FormatInt(now.Unix(), 10)},
+				[2]string{"@agent_seen", ""},
+			)
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	args := []string{}
+	for i, kv := range set {
+		if i > 0 {
+			args = append(args, ";")
+		}
+		if kv[1] == "" {
+			args = append(args, "set-option", "-pqu", "-t", pane, kv[0])
+		} else {
+			args = append(args, "set-option", "-pq", "-t", pane, kv[0], kv[1])
+		}
+	}
+	_, err := r.Run(args...)
+	return err
+}

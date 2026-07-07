@@ -3,11 +3,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/abhishekrana/tmux-agent-sidebar/internal/hook"
+	"github.com/abhishekrana/tmux-agent-sidebar/internal/tmux"
 	"github.com/abhishekrana/tmux-agent-sidebar/internal/ui"
 )
 
@@ -15,6 +20,9 @@ const usage = `usage: tmux-agent-sidebar <command>
 
 commands:
   mockup [--theme light|dark]   render the sidebar with fake data (visual preview)
+  hook                          Claude Code hook entry: stdin JSON -> pane options
+  install-hooks [--target f]    add hook entries to Claude settings (default:
+                                ~/.claude/settings.local.json); idempotent
 `
 
 func main() {
@@ -25,9 +33,56 @@ func main() {
 	switch os.Args[1] {
 	case "mockup":
 		runMockup(os.Args[2:])
+	case "hook":
+		runHook()
+	case "install-hooks":
+		runInstallHooks(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n%s", os.Args[1], usage)
 		os.Exit(2)
+	}
+}
+
+// runHook never exits non-zero: a broken sidebar must not block Claude.
+func runHook() {
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return // agent not running inside tmux
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return
+	}
+	var ev hook.Event
+	if err := json.Unmarshal(data, &ev); err != nil {
+		return
+	}
+	if err := hook.Apply(tmux.Exec{}, pane, ev, hook.Decide(ev), time.Now()); err != nil {
+		fmt.Fprintln(os.Stderr, "tmux-agent-sidebar:", err)
+	}
+}
+
+func runInstallHooks(args []string) {
+	target := hook.DefaultSettingsPath()
+	for i, a := range args {
+		if a == "--target" && i+1 < len(args) {
+			target = args[i+1]
+		}
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+	changed, err := hook.Install(target, bin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+	if changed {
+		fmt.Println("hooks installed in", target)
+	} else {
+		fmt.Println("hooks already installed in", target)
 	}
 }
 
