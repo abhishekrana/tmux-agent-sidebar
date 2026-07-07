@@ -556,6 +556,45 @@ func TestFollowWindowAndSelfHeal(t *testing.T) {
 	}
 }
 
+// TestResurrectOrphanAdoption: a sidebar pane restored by tmux-resurrect
+// has no @sidebar_pane/@sidebar_on options and no session hook. open.sh
+// must adopt it — re-stamp the options and hook — instead of opening a
+// second sidebar next to it, and toggle-off must kill it even though it
+// was never tracked.
+func TestResurrectOrphanAdoption(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	s.agentPane("work")
+
+	// Simulate the restore: a pane running the sidebar with no state.
+	orphan := s.tmux("split-window", "-d", "-t", "work", "-P", "-F", "#{pane_id}",
+		binPath+" run")
+	waitFor(t, "orphan sidebar running", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-panes", "-s", "-t", "work",
+			"-F", "#{pane_id} #{pane_current_command}")
+		return strings.Contains(out, orphan+" tmux-agent-sidebar")
+	})
+
+	s.script("open.sh", "work")
+	if got := s.sidebarPane("work"); got != orphan {
+		t.Errorf("@sidebar_pane = %q, want adopted orphan %s", got, orphan)
+	}
+	out := s.tmux("list-panes", "-s", "-t", "work", "-F", "#{pane_current_command}")
+	if n := strings.Count(out, "tmux-agent-sidebar"); n != 1 {
+		t.Errorf("%d sidebar panes after open over orphan, want 1", n)
+	}
+	if hooks, _ := s.tmuxErr("show-hooks", "-t", "work"); !strings.Contains(hooks, "follow.sh") {
+		t.Error("adoption did not install the follow hook")
+	}
+
+	// Toggle sees a live sidebar -> closes everywhere, orphan included.
+	s.script("toggle.sh")
+	waitFor(t, "orphan killed by toggle-off", 5*time.Second, func() bool {
+		out := s.tmux("list-panes", "-s", "-t", "work", "-F", "#{pane_current_command}")
+		return !strings.Contains(out, "tmux-agent-sidebar")
+	})
+}
+
 // TestStatusSegment: the status subcommand counts attention + working.
 func TestStatusSegment(t *testing.T) {
 	s := start(t)

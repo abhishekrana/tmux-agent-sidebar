@@ -80,6 +80,22 @@ Agent states: `working` (yellow, spinner) · `permission` (red) ·
 `asking` (orange) · `done` (green until you visit the pane, then gray) ·
 `idle` (gray). Each agent shows its git branch and live subagent count.
 
+## tmux-resurrect / continuum
+
+Saved layouts include the sidebar pane, but restores don't bring back
+the process, its options, or its hooks — leaving a dead 30-column shell
+pane where the sidebar was. Whitelist the sidebar so restores relaunch
+it:
+
+```tmux
+set -g @resurrect-processes '"~tmux-agent-sidebar run"'
+```
+
+Restored sidebars are then adopted automatically: opening (toggle or
+the session-created hook) re-stamps the options and hooks on any pane
+already running the sidebar instead of opening a second one, and
+toggle-off kills sidebar panes even when they aren't tracked.
+
 ## Status line segment
 
 Add the placeholder wherever you want a compact summary:
