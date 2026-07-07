@@ -65,6 +65,10 @@ func Install(path, binPath string) (changed bool, err error) {
 		if hasCommand(entries, command) {
 			continue
 		}
+		// Drop any older entry of ours (e.g. unguarded or dev-path
+		// variants) so re-running install migrates instead of stacking
+		// duplicate hooks that would double-fire.
+		entries = withoutOurs(entries)
 		entries = append(entries, map[string]any{
 			"hooks": []any{
 				map[string]any{"type": "command", "command": command},
@@ -95,13 +99,48 @@ func Install(path, binPath string) (changed bool, err error) {
 // hookCommand builds the hook entry's command string. The home prefix is
 // replaced with $HOME (hook commands run through a shell) so the entry is
 // portable and keeps machine paths out of git-tracked settings files.
+// The command is self-guarding: on a machine where the plugin is not
+// installed (settings files often sync via dotfiles) it silently no-ops
+// instead of spamming hook-failure warnings on every Claude event.
 func hookCommand(binPath string) string {
+	binPath = portablePath(binPath)
+	return fmt.Sprintf(`[ -x "%s" ] && "%s" hook || true`, binPath, binPath)
+}
+
+func portablePath(p string) string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if rel, ok := strings.CutPrefix(binPath, home+string(filepath.Separator)); ok {
-			binPath = "$HOME/" + rel
+		if rel, ok := strings.CutPrefix(p, home+string(filepath.Separator)); ok {
+			return "$HOME/" + rel
 		}
 	}
-	return binPath + " hook"
+	return p
+}
+
+// ours matches any command invoking this plugin's hook subcommand,
+// whatever the path style of the install that wrote it.
+func ours(cmd string) bool {
+	return strings.Contains(cmd, "tmux-agent-sidebar") && strings.Contains(cmd, " hook")
+}
+
+// withoutOurs filters out entries whose every command is ours.
+func withoutOurs(entries []any) []any {
+	var out []any
+	for _, e := range entries {
+		entry, _ := e.(map[string]any)
+		inner, _ := entry["hooks"].([]any)
+		keep := false
+		for _, h := range inner {
+			hm, _ := h.(map[string]any)
+			cmd, _ := hm["command"].(string)
+			if !ours(cmd) {
+				keep = true
+			}
+		}
+		if keep || len(inner) == 0 {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // hasCommand reports whether any entry already runs our hook command

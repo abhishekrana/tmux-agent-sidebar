@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,17 +45,44 @@ func TestInstallCreatesAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestHookCommandUsesHomeVariable(t *testing.T) {
+func TestHookCommandGuardedAndPortable(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Skip("no home dir")
 	}
 	got := hookCommand(filepath.Join(home, ".tmux", "plugins", "x", "bin", "sb"))
-	if got != "$HOME/.tmux/plugins/x/bin/sb hook" {
-		t.Errorf("hookCommand = %q", got)
+	want := `[ -x "$HOME/.tmux/plugins/x/bin/sb" ] && "$HOME/.tmux/plugins/x/bin/sb" hook || true`
+	if got != want {
+		t.Errorf("hookCommand = %q, want %q", got, want)
 	}
-	if got := hookCommand("/opt/bin/sb"); got != "/opt/bin/sb hook" {
+	if got := hookCommand("/opt/bin/sb"); got != `[ -x "/opt/bin/sb" ] && "/opt/bin/sb" hook || true` {
 		t.Errorf("non-home path must stay absolute, got %q", got)
+	}
+}
+
+func TestInstallMigratesOldStyleEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	old := `{
+	  "hooks": {
+	    "Stop": [
+	      {"matcher": "", "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/on-stop.sh"}]},
+	      {"hooks": [{"type": "command", "command": "$HOME/.tmux/plugins/tmux-agent-sidebar/bin/tmux-agent-sidebar hook"}]}
+	    ]
+	  }
+	}`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(path, "/opt/bin/tmux-agent-sidebar"); err != nil {
+		t.Fatal(err)
+	}
+	stop := readJSON(t, path)["hooks"].(map[string]any)["Stop"].([]any)
+	if len(stop) != 2 {
+		t.Fatalf("old entry must be replaced, not stacked: %d entries", len(stop))
+	}
+	last := stop[1].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	if !strings.Contains(last, `[ -x "/opt/bin/tmux-agent-sidebar" ]`) {
+		t.Errorf("migrated entry must be guarded: %q", last)
 	}
 }
 
