@@ -17,6 +17,10 @@ import (
 const (
 	spinnerInterval  = 200 * time.Millisecond
 	snapshotInterval = time.Second
+
+	// wait-for channel signalled by jumps so every sidebar adopts the
+	// shared selection immediately instead of on its next snapshot tick.
+	refreshChannel = "tmux-agent-sidebar-refresh"
 )
 
 type tickMsg time.Time
@@ -25,6 +29,9 @@ type snapMsg struct {
 	snap model.Snapshot
 	sel  string // global @sidebar_selected at snapshot time
 }
+
+// refreshMsg carries the shared selection after a wait-for wake-up.
+type refreshMsg string
 
 // App is the Bubble Tea model for the sidebar.
 //
@@ -116,6 +123,19 @@ func (a App) snapshotTick() tea.Cmd {
 	})
 }
 
+// waitRefresh blocks on the wait-for channel until a jump signals it,
+// then re-reads the shared selection. Runs as a background tea.Cmd; the
+// blocked `tmux wait-for` child dies with the pane, so nothing leaks.
+func (a App) waitRefresh() tea.Cmd {
+	return func() tea.Msg {
+		if _, err := a.runner.Run("wait-for", refreshChannel); err != nil {
+			return nil // degrade to tick-based adoption
+		}
+		sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
+		return refreshMsg(strings.TrimSpace(sel))
+	}
+}
+
 // selectPane moves the cursor to the block owning pane, if it's listed.
 func (a *App) selectPane(pane string) {
 	if pane == "" {
@@ -192,7 +212,7 @@ func (a App) Init() tea.Cmd {
 	if a.mockup {
 		return tick()
 	}
-	return tea.Batch(tick(), a.snapshotTick())
+	return tea.Batch(tick(), a.snapshotTick(), a.waitRefresh())
 }
 
 func tick() tea.Cmd {
@@ -211,6 +231,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.selectPane(msg.sel)
 		}
 		return a, a.snapshotTick()
+	case refreshMsg:
+		if string(msg) != a.lastSel {
+			a.lastSel = string(msg)
+			a.selectPane(string(msg))
+		}
+		return a, a.waitRefresh()
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		return a, nil
@@ -303,8 +329,10 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 		"select-window", "-t", fmt.Sprintf("%s:%d", sess.Name, ag.WindowIndex), ";",
 		"select-pane", "-t", ag.PaneID, ";",
 		// Publish the selection so the target session's own sidebar
-		// (a separate process with its own cursor) highlights it too.
-		"set-option", "-g", "@sidebar_selected", ag.PaneID,
+		// (a separate process with its own cursor) highlights it too,
+		// and wake every sidebar so it adopts it now, not on next tick.
+		"set-option", "-g", "@sidebar_selected", ag.PaneID, ";",
+		"wait-for", "-S", refreshChannel,
 	)
 	a.lastSel = ag.PaneID
 	_, err := a.runner.Run(args...)

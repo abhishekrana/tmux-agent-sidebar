@@ -104,9 +104,18 @@ set -g @agent-sidebar-focus 'off'            # 'on' focuses sidebar on open
 
 ```bash
 make build          # build bin/tmux-agent-sidebar
-make test           # unit tests (hook state machine, installer, snapshot parsing)
+make unit           # unit tests (hook state machine, installer, snapshot, selection)
+make e2e            # end-to-end: real tmux servers on throwaway sockets
+make test           # everything
 bin/tmux-agent-sidebar mockup   # render the UI with fake data in any pane
 ```
+
+The e2e suite (`e2e/`) spins up an isolated tmux server per test
+(`tmux -L <private socket>`, never your live server), fakes agents with
+a renamed sleep(1) so `#{pane_current_command}` matches, drives real
+`hook` events, and asserts against `capture-pane` — including a real
+attached client (pty) pressing Enter in the sidebar and landing in the
+other session with the highlight already in place.
 
 For a local checkout instead of TPM, add to `~/.tmux.conf`:
 
