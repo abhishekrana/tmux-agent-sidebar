@@ -30,9 +30,9 @@ sidewin=$(tmux display-message -t "$pane" -p '#{window_id}')
 
 width=$(tmux show-option -gqv @agent-sidebar-width)
 width=${width:-30}
-active=$(tmux display-message -t "$session" -p '#{pane_id}')
 
+# -d: move the pane without making it active. Focus (and the window's
+# automatic-rename) must never flick to the sidebar mid-switch.
 tmux set-option -t "$session" -q @sidebar_moving 1
-tmux join-pane -hbf -l "$width" -s "$pane" -t "$curwin" 2>/dev/null || true
-tmux select-pane -t "$active" 2>/dev/null || true
+tmux join-pane -dhbf -l "$width" -s "$pane" -t "$curwin" 2>/dev/null || true
 tmux set-option -t "$session" -uq @sidebar_moving

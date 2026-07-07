@@ -28,16 +28,16 @@ if [ -n "$alive" ]; then
     exit 0
 fi
 
-# Active pane of the session's active window: anchor for the split and
-# where focus returns afterwards.
+# Split off the session's active pane; -d keeps focus (and the window's
+# automatic-rename) where it was instead of flicking to the sidebar.
 active=$(tmux display-message -p -t "$session" '#{pane_id}')
-new=$(tmux split-window -hbf -l "$width" -t "$active" -P -F '#{pane_id}' "$BIN run --theme $theme")
+new=$(tmux split-window -dhbf -l "$width" -t "$active" -P -F '#{pane_id}' "$BIN run --theme $theme")
 tmux set-option -t "$session" -q @sidebar_pane "$new"
 tmux set-option -t "$session" -q @sidebar_on 1
 
 focus=$(tmux show-option -gqv @agent-sidebar-focus)
-if [ "$focus" != "on" ]; then
-    tmux select-pane -t "$active"
+if [ "$focus" = "on" ]; then
+    tmux select-pane -t "$new"
 fi
 
 tmux set-hook -t "$session" session-window-changed \

@@ -346,6 +346,9 @@ func TestSidebarRendersAgentState(t *testing.T) {
 
 	s.script("open.sh", "work")
 	side := s.sidebarPane("work")
+	if active, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{pane_id}"); active == side {
+		t.Error("opening the sidebar stole focus")
+	}
 	waitFor(t, "sidebar shows working agent", 5*time.Second, func() bool {
 		c := s.capture(side)
 		return strings.Contains(c, "claude") && strings.Contains(c, "working")
@@ -543,6 +546,14 @@ func TestFollowWindowAndSelfHeal(t *testing.T) {
 		sidewin, _ := s.tmuxErr("display-message", "-t", side, "-p", "#{window_id}")
 		return cur != "" && cur == sidewin
 	})
+	// The move must not steal focus or the window name (join-pane -d):
+	// the user reported focus flicking to the sidebar on window switch.
+	if active, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{pane_id}"); active == side {
+		t.Error("sidebar stole focus after following the window")
+	}
+	if name, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{window_name}"); name == "tmux-agent-sidebar" {
+		t.Error("window auto-renamed to the sidebar after follow")
+	}
 
 	// Kill the sidebar process behind tmux's back; the next window change
 	// must clean up the stale options and hook.
