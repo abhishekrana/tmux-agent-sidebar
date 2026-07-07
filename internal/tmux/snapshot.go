@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -19,9 +20,16 @@ const snapFormat = "#{session_name}\t#{session_attached}\t#{window_index}\t#{win
 // Claude Code runs as `claude` (native) or `node` (npm install).
 var agentCommands = map[string]bool{"claude": true, "node": true}
 
-// CurrentSession names the session the sidebar pane lives in.
+// CurrentSession names the session the sidebar pane lives in, anchored
+// to our own pane: a bare display-message resolves against the attached
+// client, which may be looking at a different session.
 func CurrentSession(r Runner) string {
-	out, _ := r.Run("display-message", "-p", "#S")
+	args := []string{"display-message", "-p"}
+	if pane := os.Getenv("TMUX_PANE"); pane != "" {
+		args = append(args, "-t", pane)
+	}
+	args = append(args, "#S")
+	out, _ := r.Run(args...)
 	return out
 }
 
