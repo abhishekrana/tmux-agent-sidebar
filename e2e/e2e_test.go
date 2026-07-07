@@ -11,6 +11,7 @@ package e2e
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,8 +51,10 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(shimDir)
 
+	// -f /dev/null keeps tests hermetic: the developer's ~/.tmux.conf
+	// (plugins, hooks, resurrect) must never leak into test servers.
 	realTmux, _ := exec.LookPath("tmux")
-	shim := "#!/bin/sh\nexec " + realTmux + " -L \"$TAS_TEST_SOCKET\" \"$@\"\n"
+	shim := "#!/bin/sh\nexec " + realTmux + " -L \"$TAS_TEST_SOCKET\" -f /dev/null \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(shimDir, "tmux"), []byte(shim), 0o755); err != nil {
 		panic(err)
 	}
@@ -75,11 +78,14 @@ type server struct {
 	env []string
 }
 
+var serverSeq int
+
 func start(t *testing.T) *server {
 	if testing.Short() {
 		t.Skip("e2e skipped with -short")
 	}
-	sock := fmt.Sprintf("tas-e2e-%d-%s", os.Getpid(),
+	serverSeq++ // unique socket even for -count>1 reruns of one test
+	sock := fmt.Sprintf("tas-e2e-%d-%d-%s", os.Getpid(), serverSeq,
 		strings.NewReplacer("/", "-", " ", "-").Replace(t.Name()))
 	var env []string
 	for _, kv := range os.Environ() {
@@ -188,6 +194,38 @@ func (s *server) capture(pane string) string {
 func (s *server) captureText(pane string) string {
 	out, _ := s.tmuxErr("capture-pane", "-p", "-t", pane)
 	return out
+}
+
+// ptyClient attaches a real client (pty via script(1)) and returns its
+// stdin: bytes written there are typed into the client, so keyboard AND
+// client-level mouse input (status-line clicks) take the real path.
+func (s *server) ptyClient(session string) io.WriteCloser {
+	s.t.Helper()
+	if _, err := exec.LookPath("script"); err != nil {
+		s.t.Skip("script(1) not available for pty client")
+	}
+	cmd := exec.Command("script", "-qfc", "tmux attach-session -t "+session, "/dev/null")
+	cmd.Env = s.env
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		s.t.Fatalf("client stdin: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		s.t.Fatalf("attach client: %v", err)
+	}
+	s.t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+	waitFor(s.t, "client attached", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, session)
+	})
+	return stdin
+}
+
+// clientClick types a left press+release at 1-based (col, row) into the
+// attached client — the same bytes a terminal sends for a single click.
+func clientClick(stdin io.Writer, col, row int) {
+	fmt.Fprintf(stdin, "\x1b[<0;%d;%dM", col, row)
+	fmt.Fprintf(stdin, "\x1b[<0;%d;%dm", col, row)
 }
 
 // click injects a left mouse press+release at 1-based (col, row) into the
@@ -564,6 +602,66 @@ func TestFollowWindowAndSelfHeal(t *testing.T) {
 	})
 	if on, _ := s.tmuxErr("show-option", "-t", "work", "-qv", "@sidebar_on"); on != "" {
 		t.Errorf("@sidebar_on=%q after self-heal, want unset", on)
+	}
+}
+
+// TestStatusBarTabClick guards window-tab clicking while the follow hook
+// moves the sidebar around. Investigating the "changing tabs needs
+// double click" report showed the cause is stock tmux, sidebar or not:
+// rapid clicks chain into Second/TripleClick events that are unbound by
+// default and silently dropped. With those bound like a single click
+// (the fix this test documents), every click must switch — including
+// mid-follow.
+func TestStatusBarTabClick(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	s.agentPane("work")
+	s.tmux("new-window", "-t", "work") // window 1; window 0 is the first
+	// Deterministic tab geometry: window list only, ' #I ' per tab.
+	s.tmux("set-option", "-g", "mouse", "on", ";",
+		"set-option", "-g", "status-left", "", ";",
+		"set-option", "-g", "status-right", "", ";",
+		"set-option", "-g", "window-status-format", " #I ", ";",
+		"set-option", "-g", "window-status-current-format", " #I ")
+	s.tmux("bind-key", "-n", "SecondClick1Status", "switch-client -t =")
+	s.tmux("bind-key", "-n", "TripleClick1Status", "switch-client -t =")
+
+	s.script("toggle.sh")
+	waitFor(t, "sidebar open", 5*time.Second, func() bool { return s.sidebarAlive("work") })
+
+	stdin := s.ptyClient("work")
+	var height int
+	waitFor(t, "client size known", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_height}")
+		_, err := fmt.Sscanf(strings.TrimSpace(out), "%d", &height)
+		return err == nil && height > 0
+	})
+	statusRow := height // status line is the bottom row
+	// Rendered window list: ` 0 ` ` 1 ` (separator between) -> tab
+	// centers at columns 2 and 6.
+	tabCol := map[int]int{0: 2, 1: 6}
+
+	activeWindow := func() string {
+		out, _ := s.tmuxErr("display-message", "-t", "work", "-p", "#{window_index}")
+		return strings.TrimSpace(out)
+	}
+
+	for i := range 12 {
+		target := i % 2
+		clientClick(stdin, tabCol[target], statusRow)
+		ok := false
+		deadline := time.Now().Add(1500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			if activeWindow() == fmt.Sprint(target) {
+				ok = true
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		if !ok {
+			t.Fatalf("click %d: single status-bar click on window %d did not switch (active=%s)",
+				i, target, activeWindow())
+		}
 	}
 }
 

@@ -80,6 +80,18 @@ Agent states: `working` (yellow, spinner) · `permission` (red) ·
 `asking` (orange) · `done` (green until you visit the pane, then gray) ·
 `idle` (gray). Each agent shows its git branch and live subagent count.
 
+## Tip: rapid window-tab clicks
+
+Unrelated to this plugin but easy to blame on it: stock tmux turns the
+2nd/3rd of quick successive clicks into `SecondClick`/`TripleClick`
+events, which are unbound on the status line — so fast tab clicks get
+silently dropped. Make every click count:
+
+```tmux
+bind -n SecondClick1Status switch-client -t =
+bind -n TripleClick1Status switch-client -t =
+```
+
 ## tmux-resurrect / continuum
 
 Saved layouts include the sidebar pane, but restores don't bring back
