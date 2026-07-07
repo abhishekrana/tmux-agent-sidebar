@@ -26,3 +26,16 @@ key=${key:-e}
 # Formats expand when the binding fires, anchoring the script to the
 # session/pane where the key was pressed.
 tmux bind-key "$key" run-shell "$CURRENT_DIR/scripts/toggle.sh '#{session_name}' '#{pane_id}'"
+
+# Replace the #{agent_sidebar_status} placeholder in the status line
+# with the live segment (standard TPM interpolation pattern).
+placeholder="\#{agent_sidebar_status}"
+segment="#($BIN status)"
+for side in status-left status-right; do
+    value=$(tmux show-option -gqv "$side")
+    case "$value" in
+    *"$placeholder"*)
+        tmux set-option -g "$side" "${value//$placeholder/$segment}"
+        ;;
+    esac
+done

@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"sort"
@@ -108,6 +109,22 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 	return snap
 }
 
+// StatusSegment renders a compact status-line summary with tmux colour
+// markup: attention count (red) and working count (yellow). Empty when
+// no agents are running, so the segment vanishes rather than showing 0s.
+func StatusSegment(r Runner) string {
+	snap := Snapshot(r, nil, "") // nil cache: skip git lookups, counts only
+	att, work := snap.Attention(), snap.Working()
+	parts := []string{}
+	if att > 0 {
+		parts = append(parts, fmt.Sprintf("#[fg=#dc322f,bold]⚠%d#[default]", att))
+	}
+	if work > 0 {
+		parts = append(parts, fmt.Sprintf("#[fg=#b58900]●%d#[default]", work))
+	}
+	return strings.Join(parts, " ")
+}
+
 // BranchCache memoizes git branch lookups per directory so the 1s
 // snapshot tick doesn't fork git for every agent every time.
 type BranchCache struct {
@@ -126,7 +143,7 @@ func NewBranchCache() *BranchCache {
 }
 
 func (c *BranchCache) Get(dir string) string {
-	if dir == "" {
+	if c == nil || dir == "" {
 		return ""
 	}
 	if e, ok := c.entries[dir]; ok && time.Since(e.at) < branchTTL {

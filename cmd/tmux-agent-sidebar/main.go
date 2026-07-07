@@ -21,6 +21,7 @@ const usage = `usage: tmux-agent-sidebar <command>
 commands:
   run [--theme light|dark]      run the live sidebar (inside a tmux pane)
   mockup [--theme light|dark]   render the sidebar with fake data (visual preview)
+  status                        print a status-line segment (⚠N ●N)
   hook                          Claude Code hook entry: stdin JSON -> pane options
   install-hooks [--target f]    add hook entries to Claude settings (default:
                                 ~/.claude/settings.local.json); idempotent
@@ -36,6 +37,8 @@ func main() {
 		runLive(os.Args[2:])
 	case "mockup":
 		runMockup(os.Args[2:])
+	case "status":
+		fmt.Print(tmux.StatusSegment(tmux.Exec{}))
 	case "hook":
 		runHook()
 	case "install-hooks":
