@@ -109,6 +109,31 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 	return snap
 }
 
+// ClientFor picks the client tty a jump should switch: prefer a client
+// attached to the given session (whoever is looking at this sidebar),
+// else the first attached client. Empty when no clients (detached
+// server) — callers fall back to tmux's own "current client" guess.
+func ClientFor(r Runner, session string) string {
+	out, err := r.Run("list-clients", "-F", "#{client_tty}\t#{client_session}")
+	if err != nil || out == "" {
+		return ""
+	}
+	first := ""
+	for ln := range strings.SplitSeq(out, "\n") {
+		tty, sess, ok := strings.Cut(ln, "\t")
+		if !ok {
+			continue
+		}
+		if first == "" {
+			first = tty
+		}
+		if sess == session {
+			return tty
+		}
+	}
+	return first
+}
+
 // StatusSegment renders a compact status-line summary with tmux colour
 // markup: attention count (red) and working count (yellow). Empty when
 // no agents are running, so the segment vanishes rather than showing 0s.

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -39,19 +40,36 @@ type App struct {
 	runner   tmux.Runner
 	branches *tmux.BranchCache
 	current  string // session the sidebar pane lives in
+	debug    string // log file path (@agent-sidebar-debug), "" = off
 }
 
 // NewLive builds the sidebar against the real tmux server.
 func NewLive(theme Theme) App {
 	runner := tmux.Exec{}
+	debug, _ := runner.Run("show-option", "-gqv", "@agent-sidebar-debug")
 	app := App{
 		theme:    theme,
 		runner:   runner,
 		branches: tmux.NewBranchCache(),
 		current:  tmux.CurrentSession(runner),
+		debug:    strings.TrimSpace(debug),
 	}
 	app.setSnapshot(tmux.Snapshot(runner, app.branches, app.current))
 	return app
+}
+
+// debugf appends a timestamped line to the debug log when enabled via
+// `tmux set -g @agent-sidebar-debug /path/to/log`.
+func (a App) debugf(format string, args ...any) {
+	if a.debug == "" {
+		return
+	}
+	f, err := os.OpenFile(a.debug, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, time.Now().Format("15:04:05.000 ")+format+"\n", args...)
 }
 
 // setSnapshot swaps in fresh data, keeping the selection anchored to the
@@ -210,6 +228,7 @@ func (a App) layout() layout {
 }
 
 func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
+	a.debugf("mouse action=%v button=%v x=%d y=%d cursor=%d", m.Action, m.Button, m.X, m.Y, a.cursor)
 	switch {
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelUp:
 		a.moveCursor(-1)
@@ -218,6 +237,7 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonLeft:
 		l := a.layout()
 		idx := l.start + m.Y - 2 // 2 header lines above the body
+		a.debugf("click start=%d avail=%d idx=%d owners=%d", l.start, l.avail, idx, len(l.owners))
 		if m.Y >= 2 && m.Y < 2+l.avail && idx < len(l.owners) && a.blockSelectable(l.owners[idx]) {
 			a.cursor = l.owners[idx]
 			return a.activate()
@@ -238,11 +258,19 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 		a.flash = "would jump to " + ag.PaneID
 		return a, nil
 	}
-	_, err := a.runner.Run(
-		"switch-client", "-t", sess.Name, ";",
+	// Address the client explicitly: with several clients attached,
+	// tmux's "current client" guess can switch the wrong one.
+	args := []string{"switch-client"}
+	if tty := tmux.ClientFor(a.runner, a.current); tty != "" {
+		args = append(args, "-c", tty)
+	}
+	args = append(args,
+		"-t", sess.Name, ";",
 		"select-window", "-t", fmt.Sprintf("%s:%d", sess.Name, ag.WindowIndex), ";",
 		"select-pane", "-t", ag.PaneID,
 	)
+	_, err := a.runner.Run(args...)
+	a.debugf("jump session=%s window=%d pane=%s args=%v err=%v", sess.Name, ag.WindowIndex, ag.PaneID, args, err)
 	if err != nil {
 		a.flash = "jump failed: " + err.Error()
 	}
