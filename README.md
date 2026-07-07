@@ -76,6 +76,11 @@ closes them all. While on, each session's sidebar follows you:
 switching windows moves the sidebar pane into the active window (one
 long-lived pane, so selection and scroll position survive).
 
+Every session runs its own sidebar, but the selection is shared: jump
+to an agent in another session and the sidebar you land in already
+highlights it (published via a global option, signalled over a
+`wait-for` channel so it's instant, not next-tick).
+
 Agent states: `working` (yellow, spinner) · `permission` (red) ·
 `asking` (orange) · `done` (green until you visit the pane, then gray) ·
 `idle` (gray). Each agent shows its git branch and live subagent count.
@@ -141,11 +146,13 @@ bin/tmux-agent-sidebar mockup   # render the UI with fake data in any pane
 ```
 
 The e2e suite (`e2e/`) spins up an isolated tmux server per test
-(`tmux -L <private socket>`, never your live server), fakes agents with
-a renamed sleep(1) so `#{pane_current_command}` matches, drives real
-`hook` events, and asserts against `capture-pane` — including a real
-attached client (pty) pressing Enter in the sidebar and landing in the
-other session with the highlight already in place.
+(`tmux -L <socket> -f /dev/null`, never your live server or config),
+fakes agents with a renamed sleep(1) so `#{pane_current_command}`
+matches, drives real `hook` events, and asserts against `capture-pane`.
+It injects raw SGR mouse sequences for real clicks — into panes for the
+sidebar and into a pty-attached client for status-line tabs — including
+the release-only click a terminal produces when its focus click eats
+the press.
 
 For a local checkout instead of TPM, add to `~/.tmux.conf`:
 
@@ -159,12 +166,19 @@ Notes for hacking:
 - Hooks only load from `~/.claude/settings.json` (user level) or
   `.claude/settings{,.local}.json` (project level). A user-level
   `settings.local.json` is silently ignored by Claude Code.
-- `toggle.sh` receives session/pane as format-expanded arguments:
-  `run-shell` does not set `$TMUX_PANE`, and a bare `display-message`
-  resolves against the attached client — the wrong session when the
-  binding fires elsewhere.
-- tmux quirk: only trim newlines from `list-panes` output; trimming
-  whitespace eats trailing empty format fields of the last line.
+- Anchor every tmux call explicitly (`-t`/`-c`): `run-shell` does not
+  set `$TMUX_PANE`, and bare commands resolve against the attached
+  client — the wrong session when triggered from elsewhere.
+- Only trim newlines from `list-panes` output; trimming whitespace eats
+  trailing empty format fields of the last line.
+- Act on mouse *release*: terminals eat the press of a click that also
+  focuses their window.
+- Never wrap the sidebar in a plain `sh -c`: without job control the
+  pane's `#{pane_current_command}` becomes `sh` and every liveness
+  check breaks.
+- resurrect saves the pane shell's *child* command — for a pane whose
+  root process is the program, that's empty (hence the post-save hook).
+  Its `restore.sh` only works from server context (`run-shell`).
 
 ## How it works
 
@@ -179,10 +193,14 @@ Notes for hacking:
 - The sidebar TUI (Go, Bubble Tea) snapshots `list-panes -a` once a
   second and renders sessions alphabetically with the current one
   marked. Jumping runs `switch-client` + `select-window` +
-  `select-pane`.
+  `select-pane`, publishes the selection, and signals a `wait-for`
+  channel every sidebar blocks on.
 - A `session-window-changed` hook moves the sidebar pane into whichever
-  window becomes active (`join-pane`), with a re-entrancy guard and
-  self-healing if the pane died (e.g. tmux-resurrect restores).
+  window becomes active (`join-pane -d`), with a re-entrancy guard and
+  self-healing if the pane died.
+- The TUI registers its own session options and follow hook at startup,
+  so sidebars started outside `open.sh` (resurrect restores) just work,
+  and `open.sh` adopts any pane already running the sidebar.
 
 ## License
 
