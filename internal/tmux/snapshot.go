@@ -12,11 +12,13 @@ import (
 	"github.com/abhishekrana/tmux-agent-sidebar/internal/model"
 )
 
-// snapFormat: one line per pane across the whole server. Field order
-// must match parseLine.
-const snapFormat = "#{session_name}\t#{session_attached}\t#{window_index}\t#{window_name}\t#{window_active}\t" +
+// snapFormat: one line per pane across the whole server. The parsing
+// loop in Snapshot indexes fields by position in this format.
+const snapFormat = "#{session_name}\t#{session_attached}\t#{window_index}\t#{window_active}\t" +
 	"#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t" +
 	"#{@agent_present}\t#{@agent_state}\t#{@agent_since}\t#{@agent_seen}\t#{@agent_subagents}"
+
+const snapFields = 13
 
 // agentCommands guards against zombies: a pane whose Claude died without
 // SessionEnd keeps its options, but its foreground command changes.
@@ -51,7 +53,7 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 	bySession := map[string]*model.Session{}
 	for ln := range strings.SplitSeq(out, "\n") {
 		f := strings.Split(ln, "\t")
-		if len(f) < 14 {
+		if len(f) < snapFields {
 			continue
 		}
 		name := f[0]
@@ -64,35 +66,33 @@ func Snapshot(r Runner, bc *BranchCache, currentSession string) model.Snapshot {
 			}
 			bySession[name] = sess
 		}
-		if f[9] != "1" || !agentCommands[f[7]] {
+		if f[8] != "1" || !agentCommands[f[6]] {
 			continue // not an agent pane
 		}
 		windowIdx, _ := strconv.Atoi(f[2])
-		since, _ := strconv.ParseInt(f[11], 10, 64)
-		subagents, _ := strconv.Atoi(f[13])
-		state := model.AgentState(f[10])
+		since, _ := strconv.ParseInt(f[10], 10, 64)
+		subagents, _ := strconv.Atoi(f[12])
+		state := model.AgentState(f[9])
 		if state == "" {
 			state = model.StateIdle
 		}
-		seen := f[12] == "1"
-		attached, paneActive, windowActive := f[1] != "0" && f[1] != "", f[6] == "1", f[4] == "1"
-		if state == model.StateDone && !seen && attached && paneActive && windowActive {
+		seen := f[11] == "1"
+		paneActive, windowActive := f[5] == "1", f[3] == "1"
+		if state == model.StateDone && !seen && sess.Attached && paneActive && windowActive {
 			// User is looking at the finished agent right now.
-			_, _ = r.Run("set-option", "-pq", "-t", f[5], "@agent_seen", "1")
+			_, _ = r.Run("set-option", "-pq", "-t", f[4], "@agent_seen", "1")
 			seen = true
 		}
 		sess.Agents = append(sess.Agents, model.Agent{
-			PaneID:      f[5],
+			PaneID:      f[4],
 			WindowIndex: windowIdx,
-			// Row label is the agent command (user preference: not the
-			// window name — the branch line disambiguates instead).
-			WindowName: f[7],
-			Branch:     bc.Get(f[8]),
-			State:      state,
-			Seen:       seen,
-			Since:      time.Unix(since, 0),
-			Subagents:  subagents,
-			Focused:    paneActive && windowActive,
+			Command:     f[6],
+			Branch:      bc.Get(f[7]),
+			State:       state,
+			Seen:        seen,
+			Since:       time.Unix(since, 0),
+			Subagents:   subagents,
+			Focused:     paneActive && windowActive,
 		})
 	}
 

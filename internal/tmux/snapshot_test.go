@@ -22,10 +22,10 @@ func (f *fakeRunner) Run(args ...string) (string, error) {
 
 // Lines as tmux emits them: tab-separated, empty user options at the end
 // of the last line (must not be lost — regression for the TrimSpace bug).
-const fixture = "beta\t1\t1\tshell\t1\t%9\t1\tbash\t/tmp\t\t\t\t\t\n" +
-	"alpha\t1\t2\twork\t1\t%3\t1\tclaude\t/tmp\t1\tdone\t1700000000\t\t2\n" +
-	"alpha\t1\t1\tzombie\t0\t%2\t0\tbash\t/tmp\t1\tworking\t1700000000\t\t\n" +
-	"alpha\t1\t3\twork\t0\t%5\t1\tnode\t/tmp\t1\tworking\t1700000000\t\t"
+const fixture = "beta\t1\t1\t1\t%9\t1\tbash\t/tmp\t\t\t\t\t\n" +
+	"alpha\t1\t2\t1\t%3\t1\tclaude\t/tmp\t1\tdone\t1700000000\t\t2\n" +
+	"alpha\t1\t1\t0\t%2\t0\tbash\t/tmp\t1\tworking\t1700000000\t\t\n" +
+	"alpha\t1\t3\t0\t%5\t1\tnode\t/tmp\t1\tworking\t1700000000\t\t"
 
 func TestSnapshotParsesFilters(t *testing.T) {
 	r := &fakeRunner{panes: fixture}

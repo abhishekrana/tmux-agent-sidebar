@@ -119,7 +119,7 @@ func nameColumn(snap model.Snapshot) int {
 	w := 6 // len("claude")
 	for _, sess := range snap.Sessions {
 		for _, a := range sess.Agents {
-			if n := len([]rune(a.WindowName)); n > w {
+			if n := len([]rune(a.Command)); n > w {
 				w = n
 			}
 		}
@@ -182,7 +182,7 @@ func (r renderer) agentRow(a model.Agent, selected bool, frame int, now time.Tim
 	}
 	// Fixed columns: icon · name · state · time (right-aligned) · warn.
 	row := frag(col, false).Render("   "+stateIcon(a.State, frame)+" ") +
-		frag(r.theme.Fg, false).Render(padCol(a.WindowName, r.nameW)) +
+		frag(r.theme.Fg, false).Render(padCol(a.Command, r.nameW)) +
 		frag(col, false).Render("  "+padCol(a.State.Label(), labelW)) +
 		frag(r.theme.Muted, false).Render(fmt.Sprintf("%5s", elapsed(a.Since, now)))
 	if pad := r.width - lipgloss.Width(row); pad > 0 && selected {

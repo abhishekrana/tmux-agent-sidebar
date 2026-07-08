@@ -132,6 +132,8 @@ make test           # everything
 bin/tmux-agent-sidebar mockup   # render the UI with fake data in any pane
 ```
 
+`tmux set -g @agent-sidebar-debug /path/to/log` makes newly started sidebars log mouse events and jumps there.
+
 The e2e suite (`e2e/`) spins up an isolated tmux server per test (`tmux -L <socket> -f /dev/null`, never your live
 server or config), fakes agents with a renamed sleep(1) so `#{pane_current_command}` matches, drives real `hook`
 events, and asserts against `capture-pane`. It injects raw SGR mouse sequences for real clicks — into panes for the

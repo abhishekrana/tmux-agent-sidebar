@@ -19,12 +19,14 @@ import (
 const usage = `usage: tmux-agent-sidebar <command>
 
 commands:
-  run [--theme light|dark]      run the live sidebar (inside a tmux pane)
-  mockup [--theme light|dark]   render the sidebar with fake data (visual preview)
+  run [--theme <name>]          run the live sidebar (inside a tmux pane)
+  mockup [--theme <name>]       render the sidebar with fake data (visual preview)
   status                        print a status-line segment (⚠N ●N)
   hook                          Claude Code hook entry: stdin JSON -> pane options
   install-hooks [--target f]    add hook entries to Claude settings (default:
-                                ~/.claude/settings.local.json); idempotent
+                                ~/.claude/settings.json); idempotent
+
+themes: solarized-light (default), dark
 `
 
 func main() {

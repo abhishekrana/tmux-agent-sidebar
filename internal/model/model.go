@@ -45,7 +45,7 @@ func (s AgentState) Label() string {
 type Agent struct {
 	PaneID      string
 	WindowIndex int
-	WindowName  string
+	Command     string // pane's current command (claude/node); the row label
 	Branch      string // git branch of the pane's cwd
 	State       AgentState
 	Seen        bool      // done + visited since finishing: render dimmed

@@ -31,10 +31,8 @@ type snapMsg struct {
 	signal bool   // woken by the wait-for channel, not the 1s tick
 }
 
-// App is the Bubble Tea model for the sidebar.
-//
-// In mockup mode the snapshot is static fake data and Enter just flashes
-// what it would do; the real snapshot loop arrives in milestone 3.
+// App is the Bubble Tea model for the sidebar. In mockup mode the
+// snapshot is static fake data and Enter just flashes what it would do.
 type App struct {
 	theme  Theme
 	snap   model.Snapshot
@@ -52,7 +50,7 @@ type App struct {
 	current  string // session the sidebar pane lives in
 	debug    string // log file path (@agent-sidebar-debug), "" = off
 	lastSel  string // last @sidebar_selected value we adopted
-	attached string // attached-session set of the last snapshot
+	attached string // attachedKey of the last snapshot
 }
 
 // NewLive builds the sidebar against the real tmux server.
@@ -88,15 +86,24 @@ func attachedKey(snap model.Snapshot) string {
 	return strings.Join(names, ",")
 }
 
+// scriptPath locates one of the plugin's shell scripts relative to the
+// running binary (bin/tmux-agent-sidebar -> scripts/<name>).
+func scriptPath(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(filepath.Dir(exe)), "scripts", name)
+}
+
 // register stamps this sidebar's session options and follow hook, so a
 // sidebar started outside open.sh (tmux-resurrect restore) works fully.
 func (a App) register() {
 	pane := os.Getenv("TMUX_PANE")
-	exe, err := os.Executable()
-	if pane == "" || a.current == "" || err != nil {
+	follow := scriptPath("follow.sh")
+	if pane == "" || a.current == "" || follow == "" {
 		return
 	}
-	follow := filepath.Join(filepath.Dir(filepath.Dir(exe)), "scripts", "follow.sh")
 	_, _ = a.runner.Run(
 		"set-option", "-t", a.current, "-q", "@sidebar_pane", pane, ";",
 		"set-option", "-t", a.current, "-q", "@sidebar_on", "1", ";",
@@ -206,26 +213,26 @@ func (a *App) selectPane(pane string) {
 	}
 }
 
-// NewMockup builds the sidebar with representative fake data for visual
-// approval of the layout/palette before any real plumbing exists.
+// NewMockup builds the sidebar with representative fake data so the
+// layout and palette can be previewed in any pane.
 func NewMockup(theme Theme) App {
 	now := time.Now()
-	// Sessions in alphabetical order, as the real snapshot will deliver.
+	// Sessions in alphabetical order, as the real snapshot delivers them.
 	snap := model.Snapshot{Sessions: []model.Session{
 		{Name: "api-server", Current: true, Agents: []model.Agent{
-			{PaneID: "%1", WindowIndex: 1, WindowName: "claude", Branch: "feat/rate-limit-middleware-rollout",
+			{PaneID: "%1", WindowIndex: 1, Command: "claude", Branch: "feat/rate-limit-middleware-rollout",
 				State: model.StateWorking, Since: now.Add(-2 * time.Minute), Subagents: 2},
-			{PaneID: "%2", WindowIndex: 3, WindowName: "claude", Branch: "fix/csrf-rotation",
+			{PaneID: "%2", WindowIndex: 3, Command: "claude", Branch: "fix/csrf-rotation",
 				State: model.StatePermission, Since: now.Add(-40 * time.Second)},
 		}},
 		{Name: "blog", Agents: []model.Agent{
-			{PaneID: "%7", WindowIndex: 2, WindowName: "claude", Branch: "draft/tmux-agents-post",
+			{PaneID: "%7", WindowIndex: 2, Command: "claude", Branch: "draft/tmux-agents-post",
 				State: model.StateDone, Since: now.Add(-12 * time.Minute)},
-			{PaneID: "%8", WindowIndex: 4, WindowName: "claude", Branch: "main",
+			{PaneID: "%8", WindowIndex: 4, Command: "claude", Branch: "main",
 				State: model.StateDone, Seen: true, Since: now.Add(-33 * time.Minute)},
 		}},
 		{Name: "dotfiles", Agents: []model.Agent{
-			{PaneID: "%5", WindowIndex: 1, WindowName: "claude", Branch: "main",
+			{PaneID: "%5", WindowIndex: 1, Command: "claude", Branch: "main",
 				State: model.StateQuestion, Since: now.Add(-4 * time.Minute)},
 		}},
 		{Name: "scratch"},
@@ -413,8 +420,7 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !a.mockup {
 			// The toggle is global: q hides the sidebar everywhere,
 			// same as prefix+e. The script also kills this pane.
-			if exe, err := os.Executable(); err == nil {
-				script := filepath.Join(filepath.Dir(filepath.Dir(exe)), "scripts", "toggle.sh")
+			if script := scriptPath("toggle.sh"); script != "" {
 				_ = exec.Command("bash", script).Start()
 			}
 		}

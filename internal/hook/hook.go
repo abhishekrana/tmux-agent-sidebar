@@ -75,22 +75,15 @@ var allOptions = []string{
 	"@agent_seen", "@agent_session_id", "@agent_subagents",
 }
 
-// Apply writes an effect to the pane's options. now is injected for
-// testability.
+// Apply writes an effect to the pane's options (empty value = unset).
+// now is injected for testability.
 func Apply(r tmux.Runner, pane string, ev Event, ef Effect, now time.Time) error {
-	if ef.ClearAll {
-		args := []string{}
-		for i, name := range allOptions {
-			if i > 0 {
-				args = append(args, ";")
-			}
-			args = append(args, "set-option", "-pqu", "-t", pane, name)
-		}
-		_, err := r.Run(args...)
-		return err
-	}
-
 	set := [][2]string{}
+	if ef.ClearAll {
+		for _, name := range allOptions {
+			set = append(set, [2]string{name, ""})
+		}
+	}
 	if ef.Register {
 		set = append(set, [2]string{"@agent_present", "1"})
 		if ev.SessionID != "" {

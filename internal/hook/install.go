@@ -143,9 +143,9 @@ func withoutOurs(entries []any) []any {
 	return out
 }
 
-// hasCommand reports whether any entry already runs our hook command
-// (matched loosely so a moved binary path still counts as installed
-// only when identical; a stale path is replaced by re-running install).
+// hasCommand reports whether any entry already runs exactly this hook
+// command. A stale variant (moved binary, older format) won't match; it
+// is dropped by withoutOurs and replaced.
 func hasCommand(entries []any, command string) bool {
 	for _, e := range entries {
 		entry, _ := e.(map[string]any)

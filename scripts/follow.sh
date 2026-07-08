@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Session hook handler: keep the sidebar pane in the session's active
-# window. Fired after any command that can change the active window
-# (see FOLLOW_HOOKS in toggle.sh).
+# session-window-changed hook handler: keep the sidebar pane in the
+# session's active window.
 set -euo pipefail
 
 session=${1:?session name}
@@ -16,7 +15,8 @@ pane=$(tmux show-option -t "$session" -qv @sidebar_pane)
 
 # Self-heal: the sidebar process is gone (killed pane, tmux-resurrect
 # corpse). Drop the state and hooks; prefix+e opens a fresh one.
-# (grep on a variable, not a pipe: SIGPIPE + pipefail lies. See toggle.sh)
+# (grep a variable, not a pipe: grep -q quitting early would SIGPIPE
+# tmux and trip pipefail)
 panes=$(tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command}' 2>/dev/null) || panes=""
 if ! grep -q "^$pane tmux-agent-sidebar$" <<<"$panes"; then
     tmux set-option -t "$session" -uq @sidebar_pane
