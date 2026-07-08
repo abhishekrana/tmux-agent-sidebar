@@ -71,7 +71,8 @@ moves the sidebar pane into the active window (one long-lived pane, so selection
 
 Every session runs its own sidebar, but the selection is shared: jump to an agent in another session and the
 sidebar you land in already highlights it (published via a global option, signalled over a `wait-for` channel so
-it's instant, not next-tick).
+it's instant, not next-tick). Session switches made outside the sidebar move the highlight too — even to an agent
+you only start after switching.
 
 Agent states: `working` (yellow, spinner) · `permission` (red) · `asking` (orange) · `done` (green until you visit
 the pane, then gray) · `idle` (gray). Each agent shows its git branch and live subagent count.
@@ -172,6 +173,8 @@ Notes for hacking:
   and signals a `wait-for` channel every sidebar blocks on.
 - A `session-window-changed` hook moves the sidebar pane into whichever window becomes active (`join-pane -d`),
   with a re-entrancy guard and self-healing if the pane died.
+- A global `client-session-changed` hook signals the same channel, so the highlight follows session switches made
+  outside the sidebar — to the newly attached session's agent, or to the first agent started there afterwards.
 - The TUI registers its own session options and follow hook at startup, so sidebars started outside `open.sh`
   (resurrect restores) just work, and `open.sh` adopts any pane already running the sidebar.
 

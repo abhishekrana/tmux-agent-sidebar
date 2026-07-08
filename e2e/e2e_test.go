@@ -819,6 +819,49 @@ func TestSessionSwitchMovesHighlight(t *testing.T) {
 	})
 }
 
+// TestAgentStartedAfterSwitchGetsHighlight: switching to a session that
+// has no agent yet gives the highlight nothing to move to; an agent
+// started there right after must still receive it.
+func TestAgentStartedAfterSwitchGetsHighlight(t *testing.T) {
+	s := start(t)
+	s.newSession("aaa")
+	s.newSession("bbb")
+	s.agentPane("aaa")
+	s.tmux("set-option", "-g", "window-size", "manual")
+
+	s.script("toggle.sh")
+	sideA, sideB := s.sidebarPane("aaa"), s.sidebarPane("bbb")
+	waitFor(t, "sidebars ready", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(sideA), "bbb") &&
+			strings.Contains(s.capture(sideB), "bbb")
+	})
+
+	s.ptyClient("aaa")
+	tty := strings.TrimSpace(s.tmux("list-clients", "-F", "#{client_tty}"))
+	s.tmux("switch-client", "-c", tty, "-t", "bbb")
+	// Let a snapshot tick observe "bbb attached, no agent" so the agent's
+	// arrival, not the switch itself, is what must move the highlight.
+	time.Sleep(1500 * time.Millisecond)
+
+	s.agentPane("bbb")
+	waitFor(t, "late-started agent highlighted in both sidebars", 3*time.Second, func() bool {
+		for _, side := range []string{sideA, sideB} {
+			capture := s.capture(side)
+			_, lineNo := highlightedAgentLine(capture)
+			bbbLine := -1
+			for i, l := range strings.Split(capture, "\n") {
+				if strings.Contains(l, "bbb") {
+					bbbLine = i
+				}
+			}
+			if lineNo < 0 || lineNo < bbbLine {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 // TestSidebarSelfRegisters: a sidebar started outside open.sh (as a
 // resurrect restore does) must stamp its own options and follow hook.
 func TestSidebarSelfRegisters(t *testing.T) {

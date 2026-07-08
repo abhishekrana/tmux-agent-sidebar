@@ -122,6 +122,28 @@ func TestAttachedSessionChangeMovesHighlight(t *testing.T) {
 	}
 }
 
+// Switching to a session before its agent exists must still hand the
+// agent the highlight once it starts.
+func TestAgentStartedAfterSwitchGetsHighlight(t *testing.T) {
+	a := testApp(&fakeRunner{})
+	snap := twoSessionSnap()
+	snap.Sessions[1].Attached = true
+	snap.Sessions[1].Agents = nil // switched here before claude started
+	m, _ := a.Update(snapMsg{snap: snap, sel: ""})
+	a = m.(App)
+	if a.cursor != 1 {
+		t.Fatalf("cursor = %d while alpha-2 has no agents, want 1", a.cursor)
+	}
+
+	snap = twoSessionSnap()
+	snap.Sessions[1].Attached = true
+	m, _ = a.Update(snapMsg{snap: snap, sel: ""})
+	a = m.(App)
+	if a.cursor != 3 {
+		t.Errorf("cursor = %d after agent started in attached session, want 3", a.cursor)
+	}
+}
+
 func TestActivatePublishesSelectionAndSignals(t *testing.T) {
 	r := &fakeRunner{}
 	a := testApp(r)

@@ -75,11 +75,14 @@ func NewLive(theme Theme) App {
 	return app
 }
 
-// attachedKey fingerprints which sessions have a client attached.
+// attachedKey fingerprints the sessions that have a client attached AND
+// at least one agent. Ignoring agent-less sessions keeps the transition
+// pending: switching to a session before its agent starts changes nothing,
+// so the agent still gets the highlight when it appears.
 func attachedKey(snap model.Snapshot) string {
 	var names []string
 	for _, s := range snap.Sessions {
-		if s.Attached {
+		if s.Attached && len(s.Agents) > 0 {
 			names = append(names, s.Name)
 		}
 	}
@@ -177,8 +180,9 @@ func (a App) gather(signal bool) snapMsg {
 	}
 }
 
-// focusNewlyAttached selects the agent of a session that just gained a
-// client (a session switch made outside the sidebar).
+// focusNewlyAttached selects the agent of a session newly in the
+// attached-with-agents set: a session switch made outside the sidebar,
+// or an agent starting in the attached session right after one.
 func (a *App) focusNewlyAttached() {
 	old := map[string]bool{}
 	for n := range strings.SplitSeq(a.attached, ",") {
