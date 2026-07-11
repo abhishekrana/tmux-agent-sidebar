@@ -81,6 +81,34 @@ func TestSnapMsgUnknownPaneKeepsCursor(t *testing.T) {
 	}
 }
 
+func TestNotifyKeyTogglesOption(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r)
+	if a.notify {
+		t.Fatal("notify should start off")
+	}
+	press := func() App {
+		m, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+		return m.(App)
+	}
+	a = press()
+	if !a.notify {
+		t.Error("first n did not turn notify on")
+	}
+	wrote := false
+	for _, c := range r.calls {
+		if strings.Join(c, " ") == "set-option -g @agent_notify on" {
+			wrote = true
+		}
+	}
+	if !wrote {
+		t.Errorf("no `set-option -g @agent_notify on`; calls=%v", r.calls)
+	}
+	if a = press(); a.notify {
+		t.Error("second n did not turn notify off")
+	}
+}
+
 func TestSignalSnapAdoptsSelectionImmediately(t *testing.T) {
 	a := testApp(&fakeRunner{})
 	m, cmd := a.Update(snapMsg{snap: twoSessionSnap(), sel: "%6", signal: true})

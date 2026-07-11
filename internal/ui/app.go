@@ -32,23 +32,25 @@ type tickMsg time.Time
 type snapMsg struct {
 	snap   model.Snapshot
 	sel    string // global @sidebar_selected at snapshot time
+	notify bool   // global @agent_notify at snapshot time
 	signal bool   // woken by the wait-for channel, not the 1s tick
 }
 
 // App is the Bubble Tea model for the sidebar. In mockup mode the
 // snapshot is static fake data and Enter just flashes what it would do.
 type App struct {
-	theme  Theme
-	snap   model.Snapshot
-	blocks []block
+	theme      Theme
+	snap       model.Snapshot
+	blocks     []block
 	cursor     int // index into blocks; kept on a selectable block when possible
 	hover      int // block index under the mouse pointer, -1 when none
 	hoverFrame int // frame at the last motion event; hover expires after some idle
 	frame      int
-	width  int
-	height int
-	flash  string
-	mockup bool
+	width      int
+	height     int
+	flash      string
+	mockup     bool
+	notify     bool // desktop-notification toggle (@agent_notify), mirrored for the footer
 
 	// live-mode plumbing (nil in mockup mode)
 	runner   tmux.Runner
@@ -77,6 +79,9 @@ func NewLive(theme Theme) App {
 	if sel, err := runner.Run("show-option", "-gqv", "@sidebar_selected"); err == nil {
 		app.lastSel = strings.TrimSpace(sel)
 		app.adoptSelection(app.lastSel)
+	}
+	if v, err := runner.Run("show-option", "-gqv", "@agent_notify"); err == nil {
+		app.notify = strings.TrimSpace(v) == "on"
 	}
 	app.register()
 	return app
@@ -192,12 +197,14 @@ func (a App) waitRefresh() tea.Cmd {
 	}
 }
 
-// gather takes a fresh snapshot plus the shared selection.
+// gather takes a fresh snapshot plus the shared selection and notify state.
 func (a App) gather(signal bool) snapMsg {
 	sel, _ := a.runner.Run("show-option", "-gqv", "@sidebar_selected")
+	notify, _ := a.runner.Run("show-option", "-gqv", "@agent_notify")
 	return snapMsg{
 		snap:   tmux.Snapshot(a.runner, a.branches, a.current),
 		sel:    strings.TrimSpace(sel),
+		notify: strings.TrimSpace(notify) == "on",
 		signal: signal,
 	}
 }
@@ -356,6 +363,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tick()
 	case snapMsg:
 		a.setSnapshot(msg.snap)
+		a.notify = msg.notify
 		key := attachedKey(a.snap)
 		switch {
 		case msg.sel != a.lastSel: // explicit jump wins
@@ -433,6 +441,9 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Jump on release, not press: terminals eat the press of a click
 	// that also focuses their window, but always deliver the release.
 	case m.Action == tea.MouseActionRelease && m.Button == tea.MouseButtonLeft:
+		if a.onNotifyChip(m.X, m.Y) {
+			return a.toggleNotify()
+		}
 		if b := a.blockAt(m.Y); b >= 0 {
 			a.cursor = b
 			return a.activate()
@@ -546,8 +557,31 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.moveCursor(-1)
 	case "enter", " ":
 		return a.activate()
+	case "n":
+		return a.toggleNotify()
 	}
 	return a, nil
+}
+
+// toggleNotify flips the global desktop-notification switch (@agent_notify),
+// which the hook reads. The `n` key and a click on the footer chip both route
+// here; in mockup mode it just flips the local preview.
+func (a App) toggleNotify() (tea.Model, tea.Cmd) {
+	a.notify = !a.notify
+	if !a.mockup {
+		val := "off"
+		if a.notify {
+			val = "on"
+		}
+		_, _ = a.runner.Run("set-option", "-g", "@agent_notify", val)
+	}
+	return a, nil
+}
+
+// onNotifyChip reports whether (x,y) landed on the footer's notify chip: the
+// status line is the second-from-last row, and the chip sits on its right.
+func (a App) onNotifyChip(x, y int) bool {
+	return a.height > 1 && y == a.height-2 && x >= a.width/2
 }
 
 func (a App) View() string {
@@ -587,6 +621,6 @@ func (a App) View() string {
 	if a.flash != "" {
 		b.WriteString(" " + a.flash + "\n")
 	}
-	b.WriteString(r.footer(a.snap))
+	b.WriteString(r.footer(a.snap, a.notify))
 	return b.String()
 }

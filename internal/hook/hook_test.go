@@ -39,6 +39,33 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+func TestShouldNotify(t *testing.T) {
+	perm := Effect{State: model.StatePermission}
+	ask := Effect{State: model.StateQuestion}
+	work := Effect{Register: true, State: model.StateWorking}
+	done := Effect{State: model.StateDone}
+	cases := []struct {
+		name string
+		prev string
+		ef   Effect
+		opt  string
+		want bool
+	}{
+		{"into permission while on", "working", perm, "on", true},
+		{"into asking while on", "working", ask, "on", true},
+		{"toggle off", "working", perm, "off", false},
+		{"toggle unset", "working", perm, "", false},
+		{"already in permission (no transition)", "permission", perm, "on", false},
+		{"working is not attention", "idle", work, "on", false},
+		{"done is not attention", "working", done, "on", false},
+	}
+	for _, c := range cases {
+		if got := ShouldNotify(c.prev, c.ef, c.opt); got != c.want {
+			t.Errorf("%s: ShouldNotify(%q, %+v, %q) = %v, want %v", c.name, c.prev, c.ef, c.opt, got, c.want)
+		}
+	}
+}
+
 // fakeRunner records tmux invocations and serves canned option reads.
 type fakeRunner struct {
 	options map[string]string // option name -> value for show-options

@@ -14,6 +14,7 @@
 package hook
 
 import (
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -124,4 +125,24 @@ func Apply(r tmux.Runner, pane string, ev Event, ef Effect, now time.Time) error
 	}
 	_, err := r.Run(args...)
 	return err
+}
+
+// ShouldNotify reports whether a desktop notification should fire for this
+// event: the global @agent_notify toggle is on AND the agent is entering an
+// attention state (permission or asking) it wasn't already in. prev is the
+// pane's @agent_state before Apply ran, so a repeat event in the same state
+// (e.g. PreToolUse while working) doesn't re-fire.
+func ShouldNotify(prev string, ef Effect, notifyOpt string) bool {
+	return notifyOpt == "on" && ef.State.NeedsAttention() && string(ef.State) != prev
+}
+
+// Notify fires a desktop notification for an agent that needs the user, via
+// notify-send. Fire-and-forget: it never waits on or fails the hook, so a box
+// without notify-send (or without a desktop session) just stays silent.
+func Notify(r tmux.Runner, pane string, state model.AgentState) {
+	where, _ := r.Run("display-message", "-p", "-t", pane, "#{session_name}:#{window_index}")
+	if where == "" {
+		where = "an agent needs your input"
+	}
+	_ = exec.Command("notify-send", "-a", "Claude Code", "Claude · "+state.Label(), where).Start()
 }

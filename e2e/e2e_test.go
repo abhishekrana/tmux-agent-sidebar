@@ -1142,6 +1142,30 @@ func TestResurrectSaveHookClaudeResume(t *testing.T) {
 	}
 }
 
+// TestNotifyToggle: pressing `n` in the sidebar flips the global
+// @agent_notify option (which the hook reads) and the footer chip.
+func TestNotifyToggle(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	s.agentPane("work")
+	s.script("open.sh", "work")
+	side := s.sidebarPane("work")
+	if side == "" {
+		t.Fatal("no sidebar pane")
+	}
+	waitFor(t, "footer shows notify off", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(side), "notify off")
+	})
+
+	s.tmux("send-keys", "-t", side, "n")
+	waitFor(t, "footer shows notify on", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(side), "notify on")
+	})
+	if got := s.tmux("show-option", "-gqv", "@agent_notify"); got != "on" {
+		t.Errorf("@agent_notify = %q, want on", got)
+	}
+}
+
 // TestStatusSegment: the status subcommand counts attention + working.
 func TestStatusSegment(t *testing.T) {
 	s := start(t)

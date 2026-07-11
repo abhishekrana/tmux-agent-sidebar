@@ -65,8 +65,15 @@ func runHook() {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		return
 	}
-	if err := hook.Apply(tmux.Exec{}, pane, ev, hook.Decide(ev), time.Now()); err != nil {
+	r := tmux.Exec{}
+	ef := hook.Decide(ev)
+	prev := tmux.PaneOption(r, pane, "@agent_state") // state before Apply, for transition detection
+	if err := hook.Apply(r, pane, ev, ef, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "tmux-agent-sidebar:", err)
+	}
+	notifyOpt, _ := r.Run("show-options", "-gqv", "@agent_notify")
+	if hook.ShouldNotify(prev, ef, notifyOpt) {
+		hook.Notify(r, pane, ef.State)
 	}
 }
 

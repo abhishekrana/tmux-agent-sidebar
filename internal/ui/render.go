@@ -275,7 +275,7 @@ func blockLineCount(b block, snap model.Snapshot) int {
 	return n
 }
 
-func (r renderer) footer(snap model.Snapshot) string {
+func (r renderer) footer(snap model.Snapshot, notify bool) string {
 	var status string
 	if att := snap.Attention(); att > 0 {
 		status = lipgloss.NewStyle().Foreground(r.theme.Perm).Bold(true).
@@ -283,6 +283,15 @@ func (r renderer) footer(snap model.Snapshot) string {
 	} else {
 		status = lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" all quiet")
 	}
-	hint := lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" j/k · ⏎/click jump · q hide")
-	return r.sep() + "\n" + status + "\n" + hint
+	hint := lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" j/k · ⏎ · n notify · q hide")
+	return r.sep() + "\n" + line(status, r.notifyChip(notify), r.width) + "\n" + hint
+}
+
+// notifyChip is the desktop-notification toggle's state, shown at the right
+// of the status line: green "notify on", muted "notify off".
+func (r renderer) notifyChip(on bool) string {
+	if on {
+		return lipgloss.NewStyle().Foreground(r.theme.Done).Render("notify on")
+	}
+	return lipgloss.NewStyle().Foreground(r.theme.Muted).Render("notify off")
 }

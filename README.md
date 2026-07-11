@@ -41,6 +41,7 @@ and the sidebar picks it up on its 1s tick.
 - Claude Code ≥ 2.x (hooks)
 - Go ≥ 1.25 (to build; only needed once)
 - git (for the branch line)
+- notify-send / libnotify (optional, only for desktop notifications)
 
 ## Install (TPM)
 
@@ -70,6 +71,7 @@ Agents started before the hooks were installed are picked up on their next resta
 | `j`/`k`, wheel   | move between sessions and agents              |
 | `Enter`, click   | on an agent: jump to its pane; on a session name: switch to that session |
 | `g` / `G`        | first / last row                              |
+| `n`, click chip  | toggle desktop notifications (footer shows the state) |
 | `q`              | hide the sidebar everywhere (same as toggle)  |
 
 Clicking a session name switches to it — the one way to reach a session with no agents running (it just
@@ -86,6 +88,15 @@ you only start after switching.
 
 Agent states: `working` (yellow, spinner) · `permission` (red) · `asking` (orange) · `done` (green until you visit
 the pane, then gray) · `idle` (gray). Each agent shows its git branch and live subagent count.
+
+## Notifications
+
+Off by default. Press `n` (or click the `notify` chip in the footer) to toggle desktop notifications for the whole
+server. When on, the instant any agent needs you — a permission prompt or a question — the plugin fires a
+`notify-send` notification (`Claude · permission` / `Claude · asking`, with the `session:window`). It rides the same
+Claude Code hooks as the sidebar (no pane scraping) and only fires on the transition *into* an attention state, so a
+working agent never spams you. The footer chip mirrors the state (`notify on` / `notify off`), held in the global
+`@agent_notify` tmux option; it needs `notify-send` (libnotify) installed and no-ops harmlessly without it.
 
 ## Tip: window-tab clicks that need a second try
 
