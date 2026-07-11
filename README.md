@@ -59,11 +59,14 @@ Agents started before the hooks were installed are picked up on their next resta
 
 | key            | action                                       |
 | -------------- | -------------------------------------------- |
-| `prefix + e`   | toggle the sidebar in **all** sessions       |
-| `j`/`k`, wheel | move between agents                          |
-| `Enter`, click | jump to that agent's pane                    |
-| `g` / `G`      | first / last agent                           |
-| `q`            | hide the sidebar everywhere (same as toggle) |
+| `prefix + e`     | toggle the sidebar in **all** sessions        |
+| `j`/`k`, wheel   | move between sessions and agents              |
+| `Enter`, click   | on an agent: jump to its pane; on a session name: switch to that session |
+| `g` / `G`        | first / last row                              |
+| `q`              | hide the sidebar everywhere (same as toggle)  |
+
+Clicking a session name switches to it — the one way to reach a session with no agents running (it just
+`switch-client`s, leaving the target's window and pane where you left them).
 
 The toggle is global: one press opens a sidebar in every session (and sessions created while it's on get one
 automatically); the next press closes them all. While on, each session's sidebar follows you: switching windows
@@ -131,6 +134,23 @@ make unit           # unit tests (hook state machine, installer, snapshot, selec
 make e2e            # end-to-end: real tmux servers on throwaway sockets
 make test           # everything
 bin/tmux-agent-sidebar mockup   # render the UI with fake data in any pane
+```
+
+### Checking the UI headlessly
+
+`mockup` needs a TTY, but you can render *and* inspect it without one — on a throwaway tmux server
+(`tmux -L <socket> -f /dev/null`, the same isolation the e2e suite uses, so it never touches your live
+server). Drive it with `send-keys` and read it back with `capture-pane`; `-e` keeps the escape codes, so
+you can confirm colors and the full-width selection highlight, not just the text layout. This is the fast
+loop for iterating on `render.go`:
+
+```bash
+sock=tas-mock; bin=$PWD/bin/tmux-agent-sidebar
+tmux -L $sock -f /dev/null new-session -d -s v -x 30 -y 24 "$bin mockup"   # -x 30 = default width
+sleep 1
+tmux -L $sock -f /dev/null send-keys -t v G                # navigate: j/k/g/G move, Enter flashes
+tmux -L $sock -f /dev/null capture-pane -p -e -t v         # -p text, -e keeps colors; drop -e for plain
+tmux -L $sock -f /dev/null kill-server                     # clean up
 ```
 
 `tmux set -g @agent-sidebar-debug /path/to/log` makes newly started sidebars log mouse events and jumps there.

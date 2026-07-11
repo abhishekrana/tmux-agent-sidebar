@@ -132,23 +132,35 @@ func (a App) debugf(format string, args ...any) {
 	fmt.Fprintf(f, time.Now().Format("15:04:05.000 ")+format+"\n", args...)
 }
 
-// setSnapshot swaps in fresh data, keeping the selection anchored to the
-// same pane across refreshes.
+// setSnapshot swaps in fresh data, keeping the selection anchored across
+// refreshes by pane (agent rows) or session name (session headers).
 func (a *App) setSnapshot(snap model.Snapshot) {
-	var selected string
+	var anchorPane, anchorSess string
 	if a.blockSelectable(a.cursor) {
 		b := a.blocks[a.cursor]
-		selected = a.snap.Sessions[b.session].Agents[b.agent].PaneID
+		switch b.kind {
+		case blockAgent:
+			anchorPane = a.snap.Sessions[b.session].Agents[b.agent].PaneID
+		case blockSession:
+			anchorSess = a.snap.Sessions[b.session].Name
+		}
 	}
 	a.snap = snap
 	a.rebuild()
-	if selected == "" {
-		return
-	}
-	for i, b := range a.blocks {
-		if b.selectable() && snap.Sessions[b.session].Agents[b.agent].PaneID == selected {
-			a.cursor = i
-			return
+	switch {
+	case anchorPane != "":
+		for i, b := range a.blocks {
+			if b.kind == blockAgent && snap.Sessions[b.session].Agents[b.agent].PaneID == anchorPane {
+				a.cursor = i
+				return
+			}
+		}
+	case anchorSess != "":
+		for i, b := range a.blocks {
+			if b.kind == blockSession && snap.Sessions[b.session].Name == anchorSess {
+				a.cursor = i
+				return
+			}
 		}
 	}
 }
@@ -210,7 +222,7 @@ func (a *App) selectPane(pane string) {
 		return
 	}
 	for i, b := range a.blocks {
-		if b.selectable() && a.snap.Sessions[b.session].Agents[b.agent].PaneID == pane {
+		if b.kind == blockAgent && a.snap.Sessions[b.session].Agents[b.agent].PaneID == pane {
 			a.cursor = i
 			return
 		}
@@ -252,9 +264,17 @@ func NewMockup(theme Theme) App {
 
 func (a *App) rebuild() {
 	a.blocks = buildBlocks(a.snap)
-	if !a.blockSelectable(a.cursor) {
-		a.moveCursor(1)
+	if a.cursor >= 0 && a.cursor < len(a.blocks) && a.blocks[a.cursor].kind == blockAgent {
+		return // keep an explicit agent selection; setSnapshot re-anchors headers
 	}
+	// Default to the first agent; a session-only view lands on the first row.
+	for i, b := range a.blocks {
+		if b.kind == blockAgent {
+			a.cursor = i
+			return
+		}
+	}
+	a.cursor = 0
 }
 
 func (a App) blockSelectable(i int) bool {
@@ -383,13 +403,17 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// activate jumps to the agent under the cursor (Enter or click).
+// activate acts on the row under the cursor (Enter or click): a session
+// header switches sessions, an agent block jumps to its pane.
 func (a App) activate() (tea.Model, tea.Cmd) {
 	if !a.blockSelectable(a.cursor) {
 		return a, nil
 	}
 	b := a.blocks[a.cursor]
 	sess := a.snap.Sessions[b.session]
+	if b.kind == blockSession {
+		return a.activateSession(sess)
+	}
 	ag := sess.Agents[b.agent]
 	if a.mockup {
 		a.flash = "would jump to " + ag.PaneID
@@ -414,6 +438,35 @@ func (a App) activate() (tea.Model, tea.Cmd) {
 	a.debugf("jump session=%s window=%d pane=%s args=%v err=%v", sess.Name, ag.WindowIndex, ag.PaneID, args, err)
 	if err != nil {
 		a.flash = "jump failed: " + err.Error()
+	}
+	return a, nil
+}
+
+// activateSession switches the client to a session (Enter or a click on
+// the session name). Unlike an agent jump it leaves the target's window
+// and pane selection alone, so it also reaches agent-less sessions; the
+// client-session-changed hook then moves every sidebar's highlight.
+func (a App) activateSession(sess model.Session) (tea.Model, tea.Cmd) {
+	if a.mockup {
+		a.flash = "would switch to " + sess.Name
+		return a, nil
+	}
+	if sess.Current {
+		return a, nil // already here
+	}
+	args := []string{"switch-client"}
+	if tty := tmux.ClientFor(a.runner, a.current); tty != "" {
+		args = append(args, "-c", tty)
+	}
+	args = append(args,
+		"-t", sess.Name, ";",
+		// Signal so every sidebar re-gathers immediately, not next tick.
+		"wait-for", "-S", refreshChannel,
+	)
+	_, err := a.runner.Run(args...)
+	a.debugf("switch session=%s args=%v err=%v", sess.Name, args, err)
+	if err != nil {
+		a.flash = "switch failed: " + err.Error()
 	}
 	return a, nil
 }
@@ -463,7 +516,7 @@ func (a App) View() string {
 		sess := a.snap.Sessions[blk.session]
 		switch blk.kind {
 		case blockSession:
-			body = append(body, r.sessionRow(sess))
+			body = append(body, r.sessionRow(sess, i == a.cursor))
 		case blockAgent:
 			body = append(body, r.agentBlock(sess.Agents[blk.agent], i == a.cursor, a.frame, now)...)
 		}

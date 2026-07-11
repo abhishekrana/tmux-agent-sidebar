@@ -596,6 +596,57 @@ func TestClickJump(t *testing.T) {
 	})
 }
 
+// TestClickSessionSwitches: clicking a session name (not an agent) must
+// switch-client to that session — including an agent-less one, which has
+// no row to click today and is otherwise unreachable from the sidebar.
+func TestClickSessionSwitches(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script(1) not available for pty client")
+	}
+	s := start(t)
+	s.newSession("aaa")
+	s.newSession("bbb") // deliberately no agent
+	s.agentPane("aaa")
+	s.tmux("set-option", "-g", "window-size", "manual")
+
+	s.script("toggle.sh")
+	sideA := s.sidebarPane("aaa")
+	waitFor(t, "sidebar lists the agent-less bbb", 5*time.Second, func() bool {
+		return strings.Contains(s.capture(sideA), "bbb")
+	})
+
+	client := exec.Command("script", "-qfc", "tmux attach-session -t aaa", "/dev/null")
+	client.Env = s.env
+	if err := client.Start(); err != nil {
+		t.Fatalf("attach client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Process.Kill(); _, _ = client.Process.Wait() })
+	waitFor(t, "client attached", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "aaa")
+	})
+
+	// bbb has no agent, so its only row is the session header.
+	lines := strings.Split(s.captureText(sideA), "\n")
+	row := -1
+	for i, l := range lines {
+		if strings.Contains(l, "bbb") {
+			row = i + 1 // rows are 0-based, SGR is 1-based
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatalf("bbb's session row not found in sidebar:\n%s", strings.Join(lines, "\n"))
+	}
+
+	s.click(sideA, 2, row) // column 2 is inside the "bbb" name
+
+	waitFor(t, "click on the session name switched the client to bbb", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "bbb")
+	})
+}
+
 // TestFollowKeepsColumnWidths: moving the sidebar in and out of a window
 // must not redistribute the other columns — tmux takes the inserted
 // width proportionally from all panes but returns it to the leftmost

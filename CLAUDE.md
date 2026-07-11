@@ -12,7 +12,15 @@ make unit               # go test -short ./...
 make e2e                # full lifecycle against throwaway tmux servers
 make test               # everything
 go test ./e2e/ -run TestName -v -count=1   # single e2e test
-bin/tmux-agent-sidebar mockup              # UI preview with fake data
+bin/tmux-agent-sidebar mockup              # UI preview with fake data (needs a TTY)
+```
+
+Check the UI without a TTY (fast loop for `render.go`) on a throwaway socket — never the live server:
+
+```bash
+tmux -L tas-mock -f /dev/null new-session -d -s v -x 30 -y 24 "$PWD/bin/tmux-agent-sidebar mockup"
+tmux -L tas-mock -f /dev/null send-keys -t v G           # j/k/g/G navigate, Enter flashes the action
+tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors (verify highlight); then kill-server
 ```
 
 ## Layout

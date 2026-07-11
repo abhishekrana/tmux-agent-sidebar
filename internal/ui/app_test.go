@@ -60,7 +60,8 @@ func TestSnapMsgUnchangedSelectionKeepsLocalCursor(t *testing.T) {
 	a := testApp(&fakeRunner{})
 	a.lastSel = "%6" // already adopted earlier
 	a.cursor = 3
-	a.moveCursor(-1) // user pressed k: local movement to %0's block
+	a.moveCursor(-1) // k: onto alpha-2's header (now selectable)
+	a.moveCursor(-1) // k again: onto %0's agent block
 	if a.cursor != 1 {
 		t.Fatalf("moveCursor: cursor = %d, want 1", a.cursor)
 	}
@@ -113,7 +114,9 @@ func TestAttachedSessionChangeMovesHighlight(t *testing.T) {
 		t.Errorf("cursor = %d after switch to alpha-2, want 3", a.cursor)
 	}
 
-	// No change: local j/k position must survive the next tick.
+	// No change: local j/k position must survive the next tick. Two k's
+	// step past alpha-2's now-selectable header onto %0's agent block.
+	a.moveCursor(-1)
 	a.moveCursor(-1)
 	m, _ = a.Update(snapMsg{snap: snap, sel: ""})
 	a = m.(App)
@@ -210,5 +213,56 @@ func TestSetSnapshotKeepsSelectionByPane(t *testing.T) {
 	b := a.blocks[a.cursor]
 	if got := snap.Sessions[b.session].Agents[b.agent].PaneID; got != "%6" {
 		t.Errorf("selection drifted to %s after snapshot refresh, want %%6", got)
+	}
+}
+
+// A selected session header stays anchored by name across a refresh that
+// shifts block indices, just as an agent selection anchors by pane.
+func TestSetSnapshotKeepsSessionSelectionByName(t *testing.T) {
+	a := testApp(&fakeRunner{})
+	a.cursor = 2 // alpha-2's header
+	// A new agent under alpha-1 shifts every later block index down by one.
+	snap := twoSessionSnap()
+	snap.Sessions[0].Agents = append(snap.Sessions[0].Agents,
+		model.Agent{PaneID: "%2", WindowIndex: 2, State: model.StateWorking})
+	a.setSnapshot(snap)
+	b := a.blocks[a.cursor]
+	if b.kind != blockSession || snap.Sessions[b.session].Name != "alpha-2" {
+		t.Errorf("session selection drifted after refresh: block %+v", b)
+	}
+}
+
+// Activating a session header switches the client to it and, unlike an
+// agent jump, leaves window/pane selection alone.
+func TestActivateSessionSwitchesClient(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r)
+	a.cursor = 2 // alpha-2's header
+	m, _ := a.activate()
+	a = m.(App)
+
+	if len(r.calls) == 0 {
+		t.Fatal("activate issued no tmux command")
+	}
+	got := strings.Join(r.calls[len(r.calls)-1], " ")
+	for _, want := range []string{"switch-client", "-t alpha-2", "wait-for -S " + refreshChannel} {
+		if !strings.Contains(got, want) {
+			t.Errorf("switch command missing %q:\n%s", want, got)
+		}
+	}
+	for _, absent := range []string{"select-window", "select-pane", "@sidebar_selected"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("session switch should not run %q:\n%s", absent, got)
+		}
+	}
+}
+
+// Clicking the current session is a no-op: no client is switched.
+func TestActivateCurrentSessionIsNoop(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r)
+	a.cursor = 0 // alpha-1's header (current)
+	if _, _ = a.activate(); len(r.calls) != 0 {
+		t.Errorf("activating the current session issued %v", r.calls)
 	}
 }

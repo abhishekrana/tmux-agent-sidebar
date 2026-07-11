@@ -29,7 +29,9 @@ type block struct {
 	agent   int // index into session.Agents (blockAgent only)
 }
 
-func (b block) selectable() bool { return b.kind == blockAgent }
+// Both row kinds are selectable: an agent block jumps to its pane, a
+// session header switches to that session.
+func (block) selectable() bool { return true }
 
 // buildBlocks flattens the snapshot: session headers are pure group
 // labels; agents form the flat, selectable list.
@@ -151,18 +153,45 @@ func (r renderer) header(snap model.Snapshot, frame int) string {
 	return line(title, right, r.width)
 }
 
-// sessionRow is a pure group header; not selectable.
-func (r renderer) sessionRow(sess model.Session) string {
-	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).
-		Render(sess.Name)
-	right := ""
+// sessionRow is a group header. Selecting it switches to that session;
+// when selected the row carries the highlight edge to edge like an agent
+// block, and its right marker becomes the "→ switch" affordance.
+func (r renderer) sessionRow(sess model.Session, selected bool) string {
+	frag := func(c lipgloss.Color, bold bool) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(c).Bold(bold)
+		if selected {
+			s = s.Background(r.theme.SelBg)
+		}
+		return s
+	}
+	name := frag(r.theme.Emphasis, sess.Current || selected).Render(sess.Name)
+	rightText, rightColor := "", r.theme.Accent
 	switch {
 	case sess.Current:
-		right = lipgloss.NewStyle().Foreground(r.theme.Accent).Render("← here ")
+		rightText = "← here "
+	case selected:
+		rightText = "→ switch "
 	case len(sess.Agents) == 0:
-		right = lipgloss.NewStyle().Foreground(r.theme.Muted).Render("no agents ")
+		rightText, rightColor = "no agents ", r.theme.Muted
 	}
-	return line(name, right, r.width)
+	right := ""
+	if rightText != "" {
+		right = frag(rightColor, false).Render(rightText)
+	}
+	if !selected {
+		return line(name, right, r.width)
+	}
+	// Selected: fill the gap with highlighted spaces so the bar spans the
+	// full width; each run carries its own bg (an outer bg breaks at resets).
+	lw, rw := lipgloss.Width(name), lipgloss.Width(right)
+	if lw > r.width { // pathologically long name: clip with an ellipsis
+		return frag(r.theme.Emphasis, true).Render(string([]rune(sess.Name)[:max(r.width-1, 0)]) + "…")
+	}
+	if lw+rw > r.width { // no room for both: keep just the name bar
+		right, rw = "", 0
+	}
+	gap := frag(r.theme.Emphasis, false).Render(strings.Repeat(" ", r.width-lw-rw))
+	return name + gap + right
 }
 
 func (r renderer) agentRow(a model.Agent, selected bool, frame int, now time.Time) string {
