@@ -1073,6 +1073,75 @@ func TestResurrectSaveHook(t *testing.T) {
 	}
 }
 
+// TestResurrectSaveHookClaudeResume: the post-save hook rewrites each claude
+// pane line into `claude --resume <session-id>`, keyed by the pane's live
+// @agent_session_id, so a restore resumes the conversation. Covers the edge
+// cases resurrect's saved command throws at it: a normal `claude`, an empty
+// command (claude was the pane's root process, so ps() sees no child), extra
+// user flags to preserve, and a stale `--resume` from an earlier restore that
+// must be replaced -- not stacked into a double flag.
+func TestResurrectSaveHookClaudeResume(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+
+	// One live agent pane per case, each with a distinct stamped id. Each gets
+	// its own window so indices stay stable and distinct (splitting the active
+	// pane repeatedly would renumber earlier panes). The state line's
+	// session/window/pane index must match the live pane.
+	agent := func(sid string) (win, idx string) {
+		p := s.tmux("new-window", "-d", "-t", "work", "-P", "-F", "#{pane_id}", "claude 600")
+		s.hook(p, fmt.Sprintf(`{"hook_event_name":"SessionStart","session_id":%q}`, sid))
+		return s.tmux("display-message", "-p", "-t", p, "#{window_index}"),
+			s.tmux("display-message", "-p", "-t", p, "#{pane_index}")
+	}
+	line := func(sid, saved string) (string, string) {
+		win, idx := agent(sid)
+		l := fmt.Sprintf("pane\twork\t%s\t1\t:*\t%s\thost\t:/tmp\t1\tclaude\t%s\n", win, idx, saved)
+		want := ":claude --resume " + sid
+		if sid == "sid-flags" {
+			want = ":claude --dangerously-skip-permissions --resume " + sid
+		}
+		return l, want
+	}
+
+	cases := map[string]string{
+		"sid-plain": ":claude",
+		"sid-empty": ":",
+		"sid-flags": ":claude --dangerously-skip-permissions --resume STALE-ID",
+	}
+	var body string
+	wants := map[string]string{}
+	for sid, saved := range cases {
+		l, want := line(sid, saved)
+		body += l
+		wants[sid] = want
+	}
+
+	state := filepath.Join(t.TempDir(), "state.txt")
+	if err := os.WriteFile(state, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s.script("resurrect-save.sh", state)
+	out, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	for sid, want := range wants {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s: want line ending %q, got:\n%s", sid, want, got)
+		}
+	}
+	// Idempotency: the stale id is gone and resume appears exactly once.
+	if strings.Contains(got, "STALE-ID") {
+		t.Errorf("stale --resume survived:\n%s", got)
+	}
+	if n := strings.Count(got, "--resume sid-flags --resume"); n != 0 {
+		t.Errorf("double --resume flag:\n%s", got)
+	}
+}
+
 // TestStatusSegment: the status subcommand counts attention + working.
 func TestStatusSegment(t *testing.T) {
 	s := start(t)

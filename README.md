@@ -103,16 +103,20 @@ The sidebar itself jumps on release for the same reason.
 
 ## tmux-resurrect / continuum
 
-Whitelist the sidebar so restores relaunch it:
+Whitelist the sidebar (and, to resume Claude conversations, `claude`) so restores relaunch them:
 
 ```tmux
-set -g @resurrect-processes '"~tmux-agent-sidebar run"'
+set -g @resurrect-processes '"~tmux-agent-sidebar run" "~claude"'
 ```
 
 The rest is automatic. Resurrect can't see the sidebar's command (it's the pane's root process), so the plugin sets
 resurrect's post-save hook to stamp the command into each save; on restore the whitelist relaunches it and the
 sidebar re-registers its own options and follow hook. Without the whitelist, the restored slot is a dead shell pane
 you can close.
+
+The same post-save hook rewrites each saved `claude` pane into `claude --resume <session-id>`, using the id the hook
+already stamped on the pane (`@agent_session_id`). With `"~claude"` whitelisted, a restore reopens the conversation
+where you left it instead of a blank prompt; a pane whose id wasn't captured falls back to a plain `claude`.
 
 ## Status line segment
 
