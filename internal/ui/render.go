@@ -163,17 +163,25 @@ func (r renderer) leftEdge(bar bool) string {
 	return s.Render(" ")
 }
 
-// sessionRow is the unlit name line of a session header. The name sits at
-// column 1, reserving column 0 for the edge so lighting the row never
-// shifts it. Right marker: "← here" (current) or "no agents" (empty).
-func (r renderer) sessionRow(sess model.Session) string {
-	marker, markerColor := "", r.theme.Accent
+// sessionMarker is the right-hand tag of a session header. It's the same
+// whether the row is lit or not, so hovering only changes the background —
+// no text popping in. (The hover/selection highlight is the "clickable"
+// affordance; there's no separate "→ switch" label.)
+func (r renderer) sessionMarker(sess model.Session) (string, lipgloss.Color) {
 	switch {
 	case sess.Current:
-		marker = "← here "
+		return "← here ", r.theme.Accent
 	case len(sess.Agents) == 0:
-		marker, markerColor = "no agents ", r.theme.Muted
+		return "no agents ", r.theme.Muted
 	}
+	return "", r.theme.Accent
+}
+
+// sessionRow is the unlit name line of a session header. The name sits at
+// column 1, reserving column 0 for the edge so lighting the row never
+// shifts it.
+func (r renderer) sessionRow(sess model.Session) string {
+	marker, markerColor := r.sessionMarker(sess)
 	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).Render(sess.Name)
 	right := ""
 	if marker != "" {
@@ -189,10 +197,7 @@ func (r renderer) sessionBlock(sess model.Session, lit, bar bool) []string {
 	if !lit {
 		return []string{"", r.sessionRow(sess)}
 	}
-	marker := "→ switch "
-	if sess.Current {
-		marker = "← here "
-	}
+	marker, _ := r.sessionMarker(sess)
 	contentW := max(r.width-1, 0) // column 0 is the edge
 	nameW := min(lipgloss.Width(sess.Name), max(contentW-lipgloss.Width(marker), 0))
 	name := string([]rune(sess.Name)[:nameW]) +
