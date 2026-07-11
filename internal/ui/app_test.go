@@ -182,16 +182,16 @@ func TestClickJumpsOnReleaseNotPress(t *testing.T) {
 	a := testApp(r)
 	a.width, a.height = 30, 20
 
-	// Body rows: 0 alpha-1 header, 1-2 agent %0, 3 alpha-2 header,
-	// 4-5 agent %6; screen y = body row + 2 header lines.
-	press := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: 6}
+	// Body rows: 0-1 alpha-1 header, 2-3 agent %0, 4-5 alpha-2 header,
+	// 6-7 agent %6; screen y = body row + 2 header lines, so %6 is at y=8.
+	press := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: 8}
 	m, _ := a.Update(press)
 	a = m.(App)
 	if len(r.calls) != 0 {
 		t.Fatalf("press must not jump, got %v", r.calls)
 	}
 
-	release := tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, Y: 6}
+	release := tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, Y: 8}
 	m, _ = a.Update(release)
 	a = m.(App)
 	if a.cursor != 3 {
@@ -199,6 +199,27 @@ func TestClickJumpsOnReleaseNotPress(t *testing.T) {
 	}
 	if len(r.calls) == 0 || !strings.Contains(strings.Join(r.calls[len(r.calls)-1], " "), "switch-client") {
 		t.Errorf("release did not jump: calls %v", r.calls)
+	}
+}
+
+// The session header is two lines now: a leading spacer then the name.
+// Clicking the blank spacer row must still select and switch to that
+// session — the enlarged target is the whole point.
+func TestClickSessionSpacerLineSwitches(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r)
+	a.width, a.height = 30, 20
+
+	// Body rows: 0-1 alpha-1 header (spacer, name), 2-3 agent %0,
+	// 4-5 alpha-2 header. alpha-2's spacer line is body row 4 -> screen y = 6.
+	release := tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, Y: 6}
+	m, _ := a.Update(release)
+	a = m.(App)
+	if a.cursor != 2 {
+		t.Fatalf("cursor = %d after clicking alpha-2's spacer line, want 2 (its header)", a.cursor)
+	}
+	if len(r.calls) == 0 || !strings.Contains(strings.Join(r.calls[len(r.calls)-1], " "), "-t alpha-2") {
+		t.Errorf("spacer-line click did not switch to alpha-2: calls %v", r.calls)
 	}
 }
 

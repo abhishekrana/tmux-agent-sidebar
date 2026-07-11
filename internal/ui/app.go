@@ -516,7 +516,7 @@ func (a App) View() string {
 		sess := a.snap.Sessions[blk.session]
 		switch blk.kind {
 		case blockSession:
-			body = append(body, r.sessionRow(sess, i == a.cursor))
+			body = append(body, r.sessionBlock(sess, i == a.cursor)...)
 		case blockAgent:
 			body = append(body, r.agentBlock(sess.Agents[blk.agent], i == a.cursor, a.frame, now)...)
 		}

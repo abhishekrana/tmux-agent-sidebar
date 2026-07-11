@@ -153,45 +153,46 @@ func (r renderer) header(snap model.Snapshot, frame int) string {
 	return line(title, right, r.width)
 }
 
-// sessionRow is a group header. Selecting it switches to that session;
-// when selected the row carries the highlight edge to edge like an agent
-// block, and its right marker becomes the "→ switch" affordance.
-func (r renderer) sessionRow(sess model.Session, selected bool) string {
-	frag := func(c lipgloss.Color, bold bool) lipgloss.Style {
-		s := lipgloss.NewStyle().Foreground(c).Bold(bold)
-		if selected {
-			s = s.Background(r.theme.SelBg)
-		}
-		return s
-	}
-	name := frag(r.theme.Emphasis, sess.Current || selected).Render(sess.Name)
-	rightText, rightColor := "", r.theme.Accent
+// sessionRow is the unselected name line of a session header (the selected
+// band is built in sessionBlock). Its right marker is "← here" for the
+// current session or "no agents" for an empty one.
+func (r renderer) sessionRow(sess model.Session) string {
+	marker, markerColor := "", r.theme.Accent
 	switch {
 	case sess.Current:
-		rightText = "← here "
-	case selected:
-		rightText = "→ switch "
+		marker = "← here "
 	case len(sess.Agents) == 0:
-		rightText, rightColor = "no agents ", r.theme.Muted
+		marker, markerColor = "no agents ", r.theme.Muted
 	}
+	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).Render(sess.Name)
 	right := ""
-	if rightText != "" {
-		right = frag(rightColor, false).Render(rightText)
+	if marker != "" {
+		right = lipgloss.NewStyle().Foreground(markerColor).Render(marker)
 	}
+	return line(name, right, r.width)
+}
+
+// sessionBlock renders a session header as two lines: a leading spacer
+// that separates groups, then the name. When selected both lines form one
+// highlighted band (a 2-row click target); otherwise the spacer is blank.
+func (r renderer) sessionBlock(sess model.Session, selected bool) []string {
 	if !selected {
-		return line(name, right, r.width)
+		return []string{"", r.sessionRow(sess)}
 	}
-	// Selected: fill the gap with highlighted spaces so the bar spans the
-	// full width; each run carries its own bg (an outer bg breaks at resets).
-	lw, rw := lipgloss.Width(name), lipgloss.Width(right)
-	if lw > r.width { // pathologically long name: clip with an ellipsis
-		return frag(r.theme.Emphasis, true).Render(string([]rune(sess.Name)[:max(r.width-1, 0)]) + "…")
+	// A 2-row highlight band: blank spacer above, then the name. Both rows
+	// carry the selection bg so the whole target reads as one block.
+	marker := "→ switch "
+	if sess.Current {
+		marker = "← here "
 	}
-	if lw+rw > r.width { // no room for both: keep just the name bar
-		right, rw = "", 0
-	}
-	gap := frag(r.theme.Emphasis, false).Render(strings.Repeat(" ", r.width-lw-rw))
-	return name + gap + right
+	nameW := min(lipgloss.Width(sess.Name), max(r.width-lipgloss.Width(marker), 0))
+	name := string([]rune(sess.Name)[:nameW]) +
+		strings.Repeat(" ", max(r.width-nameW-lipgloss.Width(marker), 0)) + marker
+	sel := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(true).Background(r.theme.SelBg)
+	// The spacer leaves its last column unpainted: a full-width all-blank bg
+	// line makes tmux drop the highlight on the row below it.
+	spacer := sel.Render(strings.Repeat(" ", max(r.width-1, 0)))
+	return []string{spacer, sel.Render(padCol(name, r.width))}
 }
 
 func (r renderer) agentRow(a model.Agent, selected bool, frame int, now time.Time) string {
@@ -253,7 +254,7 @@ func (r renderer) agentBlock(a model.Agent, selected bool, frame int, now time.T
 // blockLineCount mirrors agentBlock's line count without rendering.
 func blockLineCount(b block, snap model.Snapshot) int {
 	if b.kind == blockSession {
-		return 1
+		return 2 // name + summary line
 	}
 	a := snap.Sessions[b.session].Agents[b.agent]
 	n := 1
