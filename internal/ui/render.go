@@ -190,9 +190,10 @@ func (r renderer) sessionRow(sess model.Session) string {
 	return line(" "+name, right, r.width)
 }
 
-// sessionBlock renders a session header as two lines: a leading spacer that
-// separates groups, then the name at column 1. When lit (hovered or
-// selected) both lines fill; when selected they also carry the accent edge.
+// sessionBlock renders a session header as two lines: a blank spacer that
+// separates groups (always unlit — highlighting it would fill the gap
+// between sessions), then the name at column 1. Both lines select the
+// session; only the name lights, with the accent edge when selected.
 func (r renderer) sessionBlock(sess model.Session, lit, bar bool) []string {
 	if !lit {
 		return []string{"", r.sessionRow(sess)}
@@ -203,10 +204,7 @@ func (r renderer) sessionBlock(sess model.Session, lit, bar bool) []string {
 	name := string([]rune(sess.Name)[:nameW]) +
 		strings.Repeat(" ", max(contentW-nameW-lipgloss.Width(marker), 0)) + marker
 	fill := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(bar).Background(r.theme.SelBg)
-	// The spacer leaves its last column unpainted: a full-width all-blank bg
-	// line makes tmux drop the highlight on the row below it.
-	spacer := r.leftEdge(bar) + fill.Render(strings.Repeat(" ", max(contentW-1, 0)))
-	return []string{spacer, r.leftEdge(bar) + fill.Render(padCol(name, contentW))}
+	return []string{"", r.leftEdge(bar) + fill.Render(padCol(name, contentW))}
 }
 
 func (r renderer) agentRow(a model.Agent, lit, bar bool, frame int, now time.Time) string {
