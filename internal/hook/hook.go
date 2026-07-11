@@ -27,6 +27,7 @@ type Event struct {
 	Name             string `json:"hook_event_name"`
 	SessionID        string `json:"session_id"`
 	NotificationType string `json:"notification_type"`
+	ToolName         string `json:"tool_name"`
 }
 
 // Effect is what an event should do to the pane options.
@@ -47,16 +48,21 @@ func Decide(ev Event) Effect {
 		// that started before the hooks were installed.
 		return Effect{Register: true, State: model.StateWorking}
 	case "PermissionRequest":
+		// AskUserQuestion arrives as a permission request but is Claude
+		// asking the user a question, not a tool approval.
+		if ev.ToolName == "AskUserQuestion" {
+			return Effect{State: model.StateQuestion}
+		}
 		return Effect{State: model.StatePermission}
 	case "Notification":
 		switch ev.NotificationType {
-		case "permission_prompt":
-			return Effect{State: model.StatePermission}
 		case "agent_needs_input", "elicitation_dialog":
 			return Effect{State: model.StateQuestion}
 		}
-		// idle_prompt is Claude's periodic "waiting for input" nudge:
-		// flipping a happily-done agent to "asking" would cry wolf.
+		// permission_prompt is a tool-blind echo of PermissionRequest (which
+		// carries tool_name), so ignore it: acting on it would relabel an
+		// AskUserQuestion "asking" as "permission". idle_prompt is Claude's
+		// periodic "waiting for input" nudge — acting on it cries wolf.
 		return Effect{}
 	case "Stop":
 		return Effect{State: model.StateDone}

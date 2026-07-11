@@ -317,14 +317,28 @@ func TestHookStateMachineLive(t *testing.T) {
 		t.Errorf("PreToolUse reset @agent_since: %q -> %q", since, got)
 	}
 
+	// A real tool-permission request (any tool but AskUserQuestion).
+	s.hook(pane, `{"hook_event_name":"PermissionRequest","tool_name":"Bash"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "permission" {
+		t.Errorf("after PermissionRequest: state=%q, want permission", got)
+	}
+
+	// permission_prompt is a tool-blind echo of PermissionRequest: ignored.
 	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"permission_prompt"}`)
 	if got := s.paneOption(pane, "@agent_state"); got != "permission" {
-		t.Errorf("after permission_prompt: state=%q, want permission", got)
+		t.Errorf("permission_prompt changed state to %q", got)
+	}
+
+	// AskUserQuestion arrives as a PermissionRequest but is Claude asking a
+	// question, not a tool approval: it must read as question, not permission.
+	s.hook(pane, `{"hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "question" {
+		t.Errorf("after AskUserQuestion PermissionRequest: state=%q, want question", got)
 	}
 
 	// idle_prompt nudges are deliberately ignored.
 	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"idle_prompt"}`)
-	if got := s.paneOption(pane, "@agent_state"); got != "permission" {
+	if got := s.paneOption(pane, "@agent_state"); got != "question" {
 		t.Errorf("idle_prompt changed state to %q", got)
 	}
 
@@ -1173,7 +1187,7 @@ func TestStatusSegment(t *testing.T) {
 	a := s.agentPane("work")
 	b := s.agentPane("work")
 	s.hook(a, `{"hook_event_name":"UserPromptSubmit","session_id":"e2e"}`)
-	s.hook(b, `{"hook_event_name":"Notification","notification_type":"permission_prompt"}`)
+	s.hook(b, `{"hook_event_name":"PermissionRequest","tool_name":"Bash"}`)
 
 	cmd := exec.Command(binPath, "status")
 	cmd.Env = s.env
