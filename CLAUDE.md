@@ -47,3 +47,14 @@ tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors (veri
   `run-shell` on a local checkout; that path isn't portable. So local changes reach a running sidebar only via
   push → pull the TPM clone (`~/.tmux/plugins/tmux-agent-sidebar`) → `make build` → restart (`prefix+e` twice),
   and the clone's HEAD must actually reach `origin/main` (`prefix+U` can silently skip the pull).
+
+## Deploy
+
+"Deploy" (aka "make it live", "get it working on my system") means: get the change running in the user's
+**live tmux**, not just built or pushed. Do every step yourself except the last:
+
+1. Commit + push to `main`.
+2. Pull the TPM clone to `origin/main` and `make build` there — both filesystem, don't touch the live server.
+3. Verify the rebuilt binary headlessly (private-socket mockup) and confirm the clone HEAD reached `origin/main`.
+4. Then tell the user to restart the sidebars: **`prefix + e` twice**. This is the one manual step — the sidebar
+   is a long-lived process and this project never drives the live tmux server. Always state it explicitly.
