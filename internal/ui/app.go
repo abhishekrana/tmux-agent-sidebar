@@ -18,6 +18,10 @@ const (
 	spinnerInterval  = 200 * time.Millisecond
 	snapshotInterval = time.Second
 
+	// The terminal sends no "pointer left" event, so hover expires after a
+	// few idle spinner frames (no motion): ~600ms after the pointer stops.
+	hoverIdleFrames = 3
+
 	// wait-for channel signalled by jumps; sidebars adopt the shared
 	// selection immediately instead of on the next tick.
 	refreshChannel = "tmux-agent-sidebar-refresh"
@@ -37,9 +41,10 @@ type App struct {
 	theme  Theme
 	snap   model.Snapshot
 	blocks []block
-	cursor int // index into blocks; kept on a selectable block when possible
-	hover  int // block index under the mouse pointer, -1 when none
-	frame  int
+	cursor     int // index into blocks; kept on a selectable block when possible
+	hover      int // block index under the mouse pointer, -1 when none
+	hoverFrame int // frame at the last motion event; hover expires after some idle
+	frame      int
 	width  int
 	height int
 	flash  string
@@ -322,6 +327,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		a.frame++
+		if a.hover >= 0 && a.frame-a.hoverFrame >= hoverIdleFrames {
+			a.hover = -1 // pointer stopped moving (left the pane or came to rest)
+		}
 		return a, tick()
 	case snapMsg:
 		a.setSnapshot(msg.snap)
@@ -394,6 +402,7 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Track the pointer so the row under it lights (any-motion tracking).
 	case m.Action == tea.MouseActionMotion:
 		a.hover = a.blockAt(m.Y)
+		a.hoverFrame = a.frame
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelUp:
 		a.moveCursor(-1)
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelDown:

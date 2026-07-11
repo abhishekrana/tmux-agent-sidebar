@@ -731,6 +731,13 @@ func TestHoverLightsRow(t *testing.T) {
 		lines := strings.Split(s.capture(side), "\n")
 		return target < len(lines) && strings.Contains(lines[target], selBG)
 	})
+
+	// No "pointer left" event exists, so with no further motion the hover
+	// must expire on its own (the row is unselected, so it goes dark).
+	waitFor(t, "idle hover clears", 3*time.Second, func() bool {
+		lines := strings.Split(s.capture(side), "\n")
+		return target < len(lines) && !strings.Contains(lines[target], selBG)
+	})
 }
 
 // TestFollowKeepsColumnWidths: moving the sidebar in and out of a window
