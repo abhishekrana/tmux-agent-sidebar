@@ -38,6 +38,7 @@ type App struct {
 	snap   model.Snapshot
 	blocks []block
 	cursor int // index into blocks; kept on a selectable block when possible
+	hover  int // block index under the mouse pointer, -1 when none
 	frame  int
 	width  int
 	height int
@@ -59,6 +60,7 @@ func NewLive(theme Theme) App {
 	debug, _ := runner.Run("show-option", "-gqv", "@agent-sidebar-debug")
 	app := App{
 		theme:    theme,
+		hover:    -1,
 		runner:   runner,
 		branches: tmux.NewBranchCache(),
 		current:  tmux.CurrentSession(runner),
@@ -147,6 +149,9 @@ func (a *App) setSnapshot(snap model.Snapshot) {
 	}
 	a.snap = snap
 	a.rebuild()
+	if a.hover >= len(a.blocks) {
+		a.hover = -1 // pointer target no longer exists
+	}
 	switch {
 	case anchorPane != "":
 		for i, b := range a.blocks {
@@ -255,6 +260,7 @@ func NewMockup(theme Theme) App {
 	}}
 	app := App{
 		theme:  theme,
+		hover:  -1,
 		snap:   snap,
 		mockup: true,
 	}
@@ -385,6 +391,9 @@ func (a App) layout() layout {
 func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	a.debugf("mouse action=%v button=%v x=%d y=%d cursor=%d", m.Action, m.Button, m.X, m.Y, a.cursor)
 	switch {
+	// Track the pointer so the row under it lights (any-motion tracking).
+	case m.Action == tea.MouseActionMotion:
+		a.hover = a.blockAt(m.Y)
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelUp:
 		a.moveCursor(-1)
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonWheelDown:
@@ -392,15 +401,23 @@ func (a App) handleMouse(m tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Jump on release, not press: terminals eat the press of a click
 	// that also focuses their window, but always deliver the release.
 	case m.Action == tea.MouseActionRelease && m.Button == tea.MouseButtonLeft:
-		l := a.layout()
-		idx := l.start + m.Y - 2 // 2 header lines above the body
-		a.debugf("click start=%d avail=%d idx=%d owners=%d", l.start, l.avail, idx, len(l.owners))
-		if m.Y >= 2 && m.Y < 2+l.avail && idx < len(l.owners) && a.blockSelectable(l.owners[idx]) {
-			a.cursor = l.owners[idx]
+		if b := a.blockAt(m.Y); b >= 0 {
+			a.cursor = b
 			return a.activate()
 		}
 	}
 	return a, nil
+}
+
+// blockAt maps a screen row (0-based, incl. the 2 header lines) to the
+// selectable block under it, or -1 if it isn't over one.
+func (a App) blockAt(y int) int {
+	l := a.layout()
+	idx := l.start + y - 2 // 2 header lines above the body
+	if y >= 2 && y < 2+l.avail && idx >= 0 && idx < len(l.owners) && a.blockSelectable(l.owners[idx]) {
+		return l.owners[idx]
+	}
+	return -1
 }
 
 // activate acts on the row under the cursor (Enter or click): a session
@@ -514,11 +531,12 @@ func (a App) View() string {
 	var body []string
 	for i, blk := range a.blocks {
 		sess := a.snap.Sessions[blk.session]
+		lit, bar := i == a.cursor || i == a.hover, i == a.cursor
 		switch blk.kind {
 		case blockSession:
-			body = append(body, r.sessionBlock(sess, i == a.cursor)...)
+			body = append(body, r.sessionBlock(sess, lit, bar)...)
 		case blockAgent:
-			body = append(body, r.agentBlock(sess.Agents[blk.agent], i == a.cursor, a.frame, now)...)
+			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, bar, a.frame, now)...)
 		}
 	}
 

@@ -116,7 +116,7 @@ func runLive(args []string) {
 }
 
 func runTUI(app ui.App) {
-	if _, err := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
+	if _, err := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}

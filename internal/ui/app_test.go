@@ -223,6 +223,25 @@ func TestClickSessionSpacerLineSwitches(t *testing.T) {
 	}
 }
 
+// Pointer motion sets the hovered block; motion off the body clears it.
+func TestMotionSetsHover(t *testing.T) {
+	a := testApp(&fakeRunner{})
+	a.width, a.height = 30, 20
+
+	// Body: 0-1 alpha-1 header, 2-3 agent %0, 4-5 alpha-2 header,
+	// 6-7 agent %6. Motion over %6's row is screen y=8.
+	m, _ := a.Update(tea.MouseMsg{Action: tea.MouseActionMotion, Y: 8})
+	a = m.(App)
+	if a.hover != 3 {
+		t.Errorf("hover = %d after motion over %%6, want 3", a.hover)
+	}
+	m, _ = a.Update(tea.MouseMsg{Action: tea.MouseActionMotion, Y: 99})
+	a = m.(App)
+	if a.hover != -1 {
+		t.Errorf("hover = %d after motion off the body, want -1", a.hover)
+	}
+}
+
 func TestSetSnapshotKeepsSelectionByPane(t *testing.T) {
 	a := testApp(&fakeRunner{})
 	a.cursor = 3
