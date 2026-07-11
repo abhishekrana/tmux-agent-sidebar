@@ -285,15 +285,35 @@ func TestActivateSessionSwitchesClient(t *testing.T) {
 		t.Fatal("activate issued no tmux command")
 	}
 	got := strings.Join(r.calls[len(r.calls)-1], " ")
-	for _, want := range []string{"switch-client", "-t alpha-2", "wait-for -S " + refreshChannel} {
+	// Switches, and publishes the session token so every sidebar highlights
+	// its row — but doesn't touch the target's window/pane selection.
+	for _, want := range []string{
+		"switch-client", "-t alpha-2",
+		"set-option -g @sidebar_selected =alpha-2",
+		"wait-for -S " + refreshChannel,
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("switch command missing %q:\n%s", want, got)
 		}
 	}
-	for _, absent := range []string{"select-window", "select-pane", "@sidebar_selected"} {
+	for _, absent := range []string{"select-window", "select-pane"} {
 		if strings.Contains(got, absent) {
 			t.Errorf("session switch should not run %q:\n%s", absent, got)
 		}
+	}
+	if a.lastSel != "=alpha-2" {
+		t.Errorf("lastSel = %q, want =alpha-2 (own write must not be re-adopted)", a.lastSel)
+	}
+}
+
+// A published session token ("=name") highlights that session's row in
+// another sidebar, just as a pane id highlights an agent.
+func TestSnapMsgAdoptsSessionToken(t *testing.T) {
+	a := testApp(&fakeRunner{})
+	m, _ := a.Update(snapMsg{snap: twoSessionSnap(), sel: "=alpha-2"})
+	a = m.(App)
+	if b := a.blocks[a.cursor]; b.kind != blockSession || a.snap.Sessions[b.session].Name != "alpha-2" {
+		t.Errorf("cursor = %d (%+v) after adopting =alpha-2, want alpha-2's header", a.cursor, b)
 	}
 }
 

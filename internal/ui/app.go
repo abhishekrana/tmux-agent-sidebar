@@ -76,7 +76,7 @@ func NewLive(theme Theme) App {
 	// Selection is shared across sidebars via the global @sidebar_selected.
 	if sel, err := runner.Run("show-option", "-gqv", "@sidebar_selected"); err == nil {
 		app.lastSel = strings.TrimSpace(sel)
-		app.selectPane(app.lastSel)
+		app.adoptSelection(app.lastSel)
 	}
 	app.register()
 	return app
@@ -226,6 +226,29 @@ func (a *App) focusNewlyAttached() {
 	}
 }
 
+// adoptSelection moves the cursor to the shared selection: a session row
+// (token "=name", published by a session click) or an agent's pane.
+func (a *App) adoptSelection(sel string) {
+	if name, ok := strings.CutPrefix(sel, "="); ok {
+		a.selectSession(name)
+	} else {
+		a.selectPane(sel)
+	}
+}
+
+// selectSession moves the cursor to the named session's header, if listed.
+func (a *App) selectSession(name string) {
+	if name == "" {
+		return
+	}
+	for i, b := range a.blocks {
+		if b.kind == blockSession && a.snap.Sessions[b.session].Name == name {
+			a.cursor = i
+			return
+		}
+	}
+}
+
 // selectPane moves the cursor to the block owning pane, if it's listed.
 func (a *App) selectPane(pane string) {
 	if pane == "" {
@@ -337,7 +360,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.sel != a.lastSel: // explicit jump wins
 			a.lastSel = msg.sel
-			a.selectPane(msg.sel)
+			a.adoptSelection(msg.sel)
 		case key != a.attached: // session switch: follow to its agent
 			a.focusNewlyAttached()
 		}
@@ -486,9 +509,12 @@ func (a App) activateSession(sess model.Session) (tea.Model, tea.Cmd) {
 	}
 	args = append(args,
 		"-t", sess.Name, ";",
-		// Signal so every sidebar re-gathers immediately, not next tick.
+		// Publish the session (token "=name") + signal so every sidebar
+		// highlights this session's row immediately, not next tick.
+		"set-option", "-g", "@sidebar_selected", "="+sess.Name, ";",
 		"wait-for", "-S", refreshChannel,
 	)
+	a.lastSel = "=" + sess.Name
 	_, err := a.runner.Run(args...)
 	a.debugf("switch session=%s args=%v err=%v", sess.Name, args, err)
 	if err != nil {

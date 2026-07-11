@@ -6,23 +6,30 @@ so you always know which agents are working, which need your attention, and whic
 ```
  tmux agents            2/5 ⠼
 ──────────────────────────────
-api-server             ← here
+
+api-server
    ⠼ claude  working      2m
      feat/rate-limit-rollout
      ⤷ 2 subagents
    ◔ claude  permission  40s
      fix/csrf-rotation
+
 blog
    ✓ claude  done        12m
      draft/tmux-agents-post
+
 dotfiles
    ? claude  asking       4m
      main
+
 scratch             no agents
 ──────────────────────────────
  ⚠ 2 need attention
  j/k · ⏎/click jump · q hide
 ```
+
+The row under the mouse lights up (hover), and the row you last clicked — session or agent — stays highlighted;
+that highlight marks where you are, so there's no separate "here" tag.
 
 States are driven by Claude Code hooks — no pane scraping, no fragile regexes. The instant an agent changes state
 (starts working, hits a permission prompt, asks a question, finishes) the hook stamps the state onto its tmux pane,

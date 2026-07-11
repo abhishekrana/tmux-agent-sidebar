@@ -651,9 +651,21 @@ func TestClickSessionSwitches(t *testing.T) {
 
 	s.click(sideA, 2, row) // column 2 is inside the "bbb" name
 
+	sideB := s.sidebarPane("bbb")
 	waitFor(t, "click on the session name switched the client to bbb", 5*time.Second, func() bool {
 		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
 		return strings.Contains(out, "bbb")
+	})
+	// The clicked session's row must be highlighted in its own sidebar —
+	// even with no agent to fall back to (the old bug left the highlight
+	// stuck on the previously-selected row).
+	waitFor(t, "bbb's session row is highlighted after the switch", 3*time.Second, func() bool {
+		for _, l := range strings.Split(s.capture(sideB), "\n") {
+			if strings.Contains(l, "bbb") && strings.Contains(l, selBG) {
+				return true
+			}
+		}
+		return false
 	})
 }
 

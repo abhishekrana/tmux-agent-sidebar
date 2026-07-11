@@ -153,33 +153,31 @@ func (r renderer) header(snap model.Snapshot, frame int) string {
 	return line(title, right, r.width)
 }
 
-// sessionMarker is the right-hand tag of a session header: "← here" for the
-// current session, "no agents" for an empty one.
-func (r renderer) sessionMarker(sess model.Session) (string, lipgloss.Color) {
-	switch {
-	case sess.Current:
-		return "← here ", r.theme.Accent
-	case len(sess.Agents) == 0:
-		return "no agents ", r.theme.Muted
+// sessionMarker is the right-hand tag of a session header: "no agents" for
+// an empty session, nothing otherwise. (The current session isn't marked —
+// the selection highlight, which follows every click, shows where you are.)
+func (r renderer) sessionMarker(sess model.Session) string {
+	if len(sess.Agents) == 0 {
+		return "no agents "
 	}
-	return "", r.theme.Accent
+	return ""
 }
 
 // sessionRow is the session's single name line. When lit (hovered or
 // selected) it fills with the highlight background; otherwise it's the name
-// plus its colored marker.
+// plus its marker.
 func (r renderer) sessionRow(sess model.Session, lit bool) string {
-	marker, markerColor := r.sessionMarker(sess)
+	marker := r.sessionMarker(sess)
 	if lit {
 		gap := max(r.width-lipgloss.Width(sess.Name)-lipgloss.Width(marker), 0)
 		plain := sess.Name + strings.Repeat(" ", gap) + marker
-		return lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).
+		return lipgloss.NewStyle().Foreground(r.theme.Emphasis).
 			Background(r.theme.SelBg).Render(padCol(plain, r.width))
 	}
-	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).Render(sess.Name)
+	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Render(sess.Name)
 	right := ""
 	if marker != "" {
-		right = lipgloss.NewStyle().Foreground(markerColor).Render(marker)
+		right = lipgloss.NewStyle().Foreground(r.theme.Muted).Render(marker)
 	}
 	return line(name, right, r.width)
 }
