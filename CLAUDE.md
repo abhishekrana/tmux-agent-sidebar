@@ -43,3 +43,7 @@ tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors (veri
 - Mouse actions fire on release, not press.
 - Comments: one short line, only for what the code can't say.
 - After changing behavior, add or extend an e2e test that fails without the change.
+- The sidebar loads via TPM `@plugin` (portable across machines through the dotfiles) — never switch it to a
+  `run-shell` on a local checkout; that path isn't portable. So local changes reach a running sidebar only via
+  push → pull the TPM clone (`~/.tmux/plugins/tmux-agent-sidebar`) → `make build` → restart (`prefix+e` twice),
+  and the clone's HEAD must actually reach `origin/main` (`prefix+U` can silently skip the pull).
