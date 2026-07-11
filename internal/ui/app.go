@@ -540,12 +540,12 @@ func (a App) View() string {
 	var body []string
 	for i, blk := range a.blocks {
 		sess := a.snap.Sessions[blk.session]
-		lit, bar := i == a.cursor || i == a.hover, i == a.cursor
+		lit := i == a.cursor || i == a.hover
 		switch blk.kind {
 		case blockSession:
-			body = append(body, r.sessionBlock(sess, lit, bar)...)
+			body = append(body, r.sessionBlock(sess, lit)...)
 		case blockAgent:
-			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, bar, a.frame, now)...)
+			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, a.frame, now)...)
 		}
 	}
 

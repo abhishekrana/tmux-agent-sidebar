@@ -153,20 +153,8 @@ func (r renderer) header(snap model.Snapshot, frame int) string {
 	return line(title, right, r.width)
 }
 
-// leftEdge is the styled first column of a lit row: an accent bar when the
-// block is selected, otherwise a fill-colored space.
-func (r renderer) leftEdge(bar bool) string {
-	s := lipgloss.NewStyle().Background(r.theme.SelBg)
-	if bar {
-		return s.Foreground(r.theme.Accent).Render("▎")
-	}
-	return s.Render(" ")
-}
-
-// sessionMarker is the right-hand tag of a session header. It's the same
-// whether the row is lit or not, so hovering only changes the background —
-// no text popping in. (The hover/selection highlight is the "clickable"
-// affordance; there's no separate "→ switch" label.)
+// sessionMarker is the right-hand tag of a session header: "← here" for the
+// current session, "no agents" for an empty one.
 func (r renderer) sessionMarker(sess model.Session) (string, lipgloss.Color) {
 	switch {
 	case sess.Current:
@@ -177,93 +165,79 @@ func (r renderer) sessionMarker(sess model.Session) (string, lipgloss.Color) {
 	return "", r.theme.Accent
 }
 
-// sessionRow is the unlit name line of a session header. The name sits at
-// column 1, reserving column 0 for the edge so lighting the row never
-// shifts it.
-func (r renderer) sessionRow(sess model.Session) string {
+// sessionRow is the session's single name line. When lit (hovered or
+// selected) it fills with the highlight background; otherwise it's the name
+// plus its colored marker.
+func (r renderer) sessionRow(sess model.Session, lit bool) string {
 	marker, markerColor := r.sessionMarker(sess)
+	if lit {
+		gap := max(r.width-lipgloss.Width(sess.Name)-lipgloss.Width(marker), 0)
+		plain := sess.Name + strings.Repeat(" ", gap) + marker
+		return lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).
+			Background(r.theme.SelBg).Render(padCol(plain, r.width))
+	}
 	name := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(sess.Current).Render(sess.Name)
 	right := ""
 	if marker != "" {
 		right = lipgloss.NewStyle().Foreground(markerColor).Render(marker)
 	}
-	return line(" "+name, right, r.width)
+	return line(name, right, r.width)
 }
 
-// sessionBlock renders a session header as two lines: a blank spacer that
-// separates groups (always unlit — highlighting it would fill the gap
-// between sessions), then the name at column 1. Both lines select the
-// session; only the name lights, with the accent edge when selected.
-func (r renderer) sessionBlock(sess model.Session, lit, bar bool) []string {
-	if !lit {
-		return []string{"", r.sessionRow(sess)}
-	}
-	marker, _ := r.sessionMarker(sess)
-	contentW := max(r.width-1, 0) // column 0 is the edge
-	nameW := min(lipgloss.Width(sess.Name), max(contentW-lipgloss.Width(marker), 0))
-	name := string([]rune(sess.Name)[:nameW]) +
-		strings.Repeat(" ", max(contentW-nameW-lipgloss.Width(marker), 0)) + marker
-	fill := lipgloss.NewStyle().Foreground(r.theme.Emphasis).Bold(bar).Background(r.theme.SelBg)
-	return []string{"", r.leftEdge(bar) + fill.Render(padCol(name, contentW))}
+// sessionBlock is a blank spacer (groups the sessions) above the name line.
+// Both lines select the session; only the name lights.
+func (r renderer) sessionBlock(sess model.Session, lit bool) []string {
+	return []string{"", r.sessionRow(sess, lit)}
 }
 
-func (r renderer) agentRow(a model.Agent, lit, bar bool, frame int, now time.Time) string {
+func (r renderer) agentRow(a model.Agent, lit bool, frame int, now time.Time) string {
 	col := r.theme.StateColor(a.State)
 	if a.State == model.StateDone && a.Seen {
 		col = r.theme.Muted // acknowledged: stop shouting
 	}
-	// Every fragment (including spacing) carries the full style itself:
-	// wrapping pre-styled text in an outer background breaks at the inner
-	// resets, leaving the highlight half-painted.
-	frag := func(c lipgloss.Color, bold bool) lipgloss.Style {
-		s := lipgloss.NewStyle().Foreground(c).Bold(bold || bar)
+	// Each fragment carries its own style: an outer background would break at
+	// the inner resets and leave the highlight half-painted.
+	frag := func(c lipgloss.Color) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(c)
 		if lit {
 			s = s.Background(r.theme.SelBg)
 		}
 		return s
 	}
-	// Fixed columns: icon · name · state · time (right-aligned). When lit,
-	// column 0 becomes the edge; the icon stays at column 3 either way.
-	var row string
-	if lit {
-		row = r.leftEdge(bar) + frag(col, false).Render("  "+stateIcon(a.State, frame)+" ")
-	} else {
-		row = frag(col, false).Render("   " + stateIcon(a.State, frame) + " ")
-	}
-	row += frag(r.theme.Fg, false).Render(padCol(a.Command, r.nameW)) +
-		frag(col, false).Render("  "+padCol(a.State.Label(), labelW)) +
-		frag(r.theme.Muted, false).Render(fmt.Sprintf("%5s", elapsed(a.Since, now)))
+	row := frag(col).Render("   "+stateIcon(a.State, frame)+" ") +
+		frag(r.theme.Fg).Render(padCol(a.Command, r.nameW)) +
+		frag(col).Render("  "+padCol(a.State.Label(), labelW)) +
+		frag(r.theme.Muted).Render(fmt.Sprintf("%5s", elapsed(a.Since, now)))
 	if pad := r.width - lipgloss.Width(row); pad > 0 && lit {
-		row += frag(r.theme.Fg, false).Render(strings.Repeat(" ", pad))
+		row += frag(r.theme.Fg).Render(strings.Repeat(" ", pad))
 	}
 	return line(row, "", r.width)
 }
 
 // subRow renders a secondary line of an agent block (branch, subagents),
-// carrying the block's fill edge to edge. The plain text is padded BEFORE
-// styling so the whole line sits inside one styled run with no bg gaps.
-func (r renderer) subRow(text string, italic, lit, bar bool) string {
+// carrying the block's fill edge to edge. Text is padded before styling so
+// the whole line sits in one styled run with no bg gaps.
+func (r renderer) subRow(text string, italic, lit bool) string {
 	s := lipgloss.NewStyle().Foreground(r.theme.Muted).Italic(italic)
 	if lit {
 		s = s.Background(r.theme.SelBg)
-		return r.leftEdge(bar) + s.Render(padCol("    "+text, max(r.width-1, 0)))
 	}
 	return s.Render(padCol("     "+text, r.width))
 }
 
 // agentBlock renders an agent's full block: main row, branch (tapered
 // with … when long), and subagent count.
-func (r renderer) agentBlock(a model.Agent, lit, bar bool, frame int, now time.Time) []string {
-	lines := []string{r.agentRow(a, lit, bar, frame, now)}
+func (r renderer) agentBlock(a model.Agent, lit bool, frame int, now time.Time) []string {
+	lines := []string{r.agentRow(a, lit, frame, now)}
 	if a.Branch != "" {
-		lines = append(lines, r.subRow(a.Branch, true, lit, bar))
+		lines = append(lines, r.subRow(a.Branch, true, lit))
 	}
 	if a.Subagents > 0 {
 		plural := "s"
 		if a.Subagents == 1 {
 			plural = ""
 		}
-		lines = append(lines, r.subRow("⤷ "+strconv.Itoa(a.Subagents)+" subagent"+plural, false, lit, bar))
+		lines = append(lines, r.subRow("⤷ "+strconv.Itoa(a.Subagents)+" subagent"+plural, false, lit))
 	}
 	return lines
 }
