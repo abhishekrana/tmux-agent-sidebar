@@ -566,12 +566,13 @@ func (a App) View() string {
 	var body []string
 	for i, blk := range a.blocks {
 		sess := a.snap.Sessions[blk.session]
-		lit := i == a.cursor || i == a.hover
+		// lit fills the row (hover or selection); bar is the selection's edge.
+		lit, bar := i == a.cursor || i == a.hover, i == a.cursor
 		switch blk.kind {
 		case blockSession:
-			body = append(body, r.sessionBlock(sess, lit)...)
+			body = append(body, r.sessionBlock(sess, lit, bar)...)
 		case blockAgent:
-			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, a.frame, now)...)
+			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, bar, a.frame, now)...)
 		}
 	}
 
