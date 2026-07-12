@@ -363,6 +363,45 @@ func TestHookStateMachineLive(t *testing.T) {
 	}
 }
 
+// An attention state must never outlive the agent that entered it. With agent
+// view open, Claude fires agent_needs_input for background sessions and later
+// agent_completed; the first must be ignored (it never pairs with a clear and
+// stranded the pane in "asking" for minutes) and the second read as a finish.
+func TestHookAttentionStateNeverSticks(t *testing.T) {
+	s := start(t)
+	s.newSession("work")
+	pane := s.agentPane("work")
+
+	// A background-session "needs input" nudge must not fabricate "asking":
+	// it fires while the agent is still working and never clears itself.
+	s.hook(pane, `{"hook_event_name":"UserPromptSubmit","session_id":"e2e"}`)
+	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"agent_needs_input"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "working" {
+		t.Errorf("agent_needs_input fabricated attention state: %q, want working", got)
+	}
+
+	// A real question (AskUserQuestion) then agent_completed: the completion
+	// clears the "asking" the bug left pinned across whole turns.
+	s.hook(pane, `{"hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "question" {
+		t.Fatalf("after AskUserQuestion: state=%q, want question", got)
+	}
+	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"agent_completed"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "done" {
+		t.Errorf("agent_completed did not clear asking: state=%q, want done", got)
+	}
+
+	// MCP elicitation round-trips: the dialog opens "asking", the response resumes.
+	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"elicitation_dialog"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "question" {
+		t.Fatalf("after elicitation_dialog: state=%q, want question", got)
+	}
+	s.hook(pane, `{"hook_event_name":"Notification","notification_type":"elicitation_complete"}`)
+	if got := s.paneOption(pane, "@agent_state"); got != "working" {
+		t.Errorf("elicitation_complete did not resume: state=%q, want working", got)
+	}
+}
+
 // TestGlobalToggleLifecycle: one toggle opens a sidebar in every session,
 // sessions born while on get one automatically, next toggle closes all.
 func TestGlobalToggleLifecycle(t *testing.T) {
