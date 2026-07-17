@@ -15,13 +15,21 @@ go test ./e2e/ -run TestName -v -count=1   # single e2e test
 bin/tmux-agent-sidebar mockup              # UI preview with fake data (needs a TTY)
 ```
 
-Check the UI without a TTY (fast loop for `render.go`) on a throwaway socket — never the live server:
+Preview loop for `render.go`/`theme.go` — build, render `mockup` (fake data, no live sessions read) on a
+throwaway socket, capture. Never the live server. Pinning the width keeps an `attach` faithful to ~30 cols:
 
 ```bash
-tmux -L tas-mock -f /dev/null new-session -d -s v -x 30 -y 24 "$PWD/bin/tmux-agent-sidebar mockup"
+make build
+tmux -L tas-mock -f /dev/null kill-server 2>/dev/null
+tmux -L tas-mock -f /dev/null new-session -d -s v -x 36 -y 34 "$PWD/bin/tmux-agent-sidebar mockup"
+tmux -L tas-mock -f /dev/null set -g window-size manual \; set -g status off \; resize-window -t v -x 36 -y 34
+tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors; plain -p to eyeball layout
 tmux -L tas-mock -f /dev/null send-keys -t v G           # j/k/g/G navigate, Enter flashes the action
-tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors (verify highlight); then kill-server
+tmux -L tas-mock attach -t v                             # optional live-test; detach C-b d, then kill-server
 ```
+
+`NewMockup` (`internal/ui/app.go`) is the sample fixture — when you change the layout, keep it representative:
+every state (working/permission/asking/done/done-seen/idle) plus one multi-Claude-on-one-branch session.
 
 ## Layout
 
@@ -36,6 +44,11 @@ tmux -L tas-mock -f /dev/null capture-pane -p -e -t v    # -e keeps colors (veri
 ## Rules
 
 - Never touch the live tmux server. Tests and manual checks run on private sockets: `tmux -L <name> -f /dev/null`.
+- Git branch is per worktree: one checkout = one branch, and multiple Claudes in the same worktree share it. The
+  sidebar reads each pane's branch from its cwd and draws the branch headline once per run of consecutive
+  same-branch agents (colored by the most-urgent when several share it). A session's panes usually sit in one
+  worktree (so one branch), but tmux doesn't enforce that — don't assume one branch per session; just collapse the
+  agents that actually match.
 - Detection is hooks + pane options only — never scrape pane content.
 - `hook` must never exit non-zero or block; Claude Code waits on it.
 - Sidebar liveness is `#{pane_current_command} == tmux-agent-sidebar` everywhere; never wrap the binary in a shell

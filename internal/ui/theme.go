@@ -28,10 +28,10 @@ func SolarizedLight() Theme {
 		Emphasis: lipgloss.Color("#586e75"), // base01
 		Accent:   lipgloss.Color("#268bd2"), // blue
 		SelBg:    lipgloss.Color("#eee8d5"), // base2
-		Working:  lipgloss.Color("#b58900"), // yellow
-		Perm:     lipgloss.Color("#dc322f"), // red
-		Question: lipgloss.Color("#cb4b16"), // orange
-		Done:     lipgloss.Color("#859900"), // green
+		Working:  lipgloss.Color("#2aa198"), // cyan — active but calm, not shouting
+		Perm:     lipgloss.Color("#b58900"), // amber — needs you
+		Question: lipgloss.Color("#b58900"), // amber — needs you
+		Done:     lipgloss.Color("#859900"), // green — ready to review
 	}
 }
 
@@ -43,9 +43,9 @@ func Dark() Theme {
 		Emphasis: lipgloss.Color("#e4e4e4"),
 		Accent:   lipgloss.Color("#5fafff"),
 		SelBg:    lipgloss.Color("#303030"),
-		Working:  lipgloss.Color("#d7af00"),
-		Perm:     lipgloss.Color("#ff5f5f"),
-		Question: lipgloss.Color("#ff8700"),
+		Working:  lipgloss.Color("#2aa198"), // cyan — active but calm
+		Perm:     lipgloss.Color("#d7af00"), // amber — needs you
+		Question: lipgloss.Color("#d7af00"), // amber — needs you
 		Done:     lipgloss.Color("#87af00"),
 	}
 }

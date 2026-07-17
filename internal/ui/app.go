@@ -275,23 +275,35 @@ func NewMockup(theme Theme) App {
 	now := time.Now()
 	// Sessions in alphabetical order, as the real snapshot delivers them.
 	snap := model.Snapshot{Sessions: []model.Session{
+		// One workspace = one checked-out branch, so a session's Claudes all
+		// share it (here a single Claude, working, with two subagents).
 		{Name: "api-server", Current: true, Agents: []model.Agent{
 			{PaneID: "%1", WindowIndex: 1, Command: "claude", Branch: "feat/rate-limit-middleware-rollout",
 				State: model.StateWorking, Since: now.Add(-2 * time.Minute), Subagents: 2},
-			{PaneID: "%2", WindowIndex: 3, Command: "claude", Branch: "fix/csrf-rotation",
-				State: model.StatePermission, Since: now.Add(-40 * time.Second)},
 		}},
 		{Name: "blog", Agents: []model.Agent{
-			{PaneID: "%7", WindowIndex: 2, Command: "claude", Branch: "draft/tmux-agents-post",
+			{PaneID: "%7", WindowIndex: 1, Command: "claude", Branch: "draft/tmux-agents-post",
 				State: model.StateDone, Since: now.Add(-12 * time.Minute)},
-			{PaneID: "%8", WindowIndex: 4, Command: "claude", Branch: "main",
-				State: model.StateDone, Seen: true, Since: now.Add(-33 * time.Minute)},
 		}},
 		{Name: "dotfiles", Agents: []model.Agent{
 			{PaneID: "%5", WindowIndex: 1, Command: "claude", Branch: "main",
 				State: model.StateQuestion, Since: now.Add(-4 * time.Minute)},
 		}},
+		// Three Claudes on one branch: the branch shows once, colored by the
+		// most-urgent of them (here the one waiting on a permission).
+		{Name: "payments", Agents: []model.Agent{
+			{PaneID: "%9", WindowIndex: 1, Command: "claude", Branch: "2091-refund-idempotency-keys",
+				State: model.StateWorking, Since: now.Add(-6 * time.Minute)},
+			{PaneID: "%10", WindowIndex: 2, Command: "claude", Branch: "2091-refund-idempotency-keys",
+				State: model.StatePermission, Since: now.Add(-30 * time.Second)},
+			{PaneID: "%11", WindowIndex: 3, Command: "claude", Branch: "2091-refund-idempotency-keys",
+				State: model.StateDone, Since: now.Add(-11 * time.Minute)},
+		}},
 		{Name: "scratch"},
+		{Name: "www", Agents: []model.Agent{
+			{PaneID: "%8", WindowIndex: 1, Command: "claude", Branch: "main",
+				State: model.StateDone, Seen: true, Since: now.Add(-33 * time.Minute)},
+		}},
 	}}
 	app := App{
 		theme:  theme,
@@ -606,7 +618,7 @@ func (a App) View() string {
 		case blockSession:
 			body = append(body, r.sessionBlock(sess, lit, bar)...)
 		case blockAgent:
-			body = append(body, r.agentBlock(sess.Agents[blk.agent], lit, bar, a.frame, now)...)
+			body = append(body, r.agentBlock(sess, blk.agent, lit, bar, a.frame, now)...)
 		}
 	}
 

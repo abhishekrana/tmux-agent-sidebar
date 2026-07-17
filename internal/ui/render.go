@@ -200,11 +200,67 @@ func (r renderer) sessionBlock(sess model.Session, lit, bar bool) []string {
 	return []string{"", r.sessionRow(sess, lit, bar)}
 }
 
-func (r renderer) agentRow(a model.Agent, lit, bar bool, frame int, now time.Time) string {
-	col := r.theme.StateColor(a.State)
+// stateColor is an agent's state color, muted once a finished agent has
+// been seen so acknowledged work stops shouting.
+func (r renderer) stateColor(a model.Agent) lipgloss.Color {
 	if a.State == model.StateDone && a.Seen {
-		col = r.theme.Muted // acknowledged: stop shouting
+		return r.theme.Muted
 	}
+	return r.theme.StateColor(a.State)
+}
+
+// attentionRank orders agents by how much they want the user, so a branch
+// shared by several Claudes takes the color of its most-urgent one.
+func attentionRank(a model.Agent) int {
+	switch {
+	case a.State.NeedsAttention():
+		return 4
+	case a.State == model.StateWorking:
+		return 3
+	case a.State == model.StateDone && !a.Seen:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// agentShowsBranch reports whether this agent draws the branch headline:
+// true unless it repeats the branch of the previous agent in the session,
+// so several Claudes on one branch show that branch once.
+func agentShowsBranch(sess model.Session, idx int) bool {
+	if sess.Agents[idx].Branch == "" {
+		return false
+	}
+	return idx == 0 || sess.Agents[idx-1].Branch != sess.Agents[idx].Branch
+}
+
+// groupColor is the state color of the most-urgent agent in the run of
+// consecutive same-branch agents starting at idx.
+func (r renderer) groupColor(sess model.Session, idx int) lipgloss.Color {
+	lead := sess.Agents[idx]
+	for j := idx + 1; j < len(sess.Agents) && sess.Agents[j].Branch == lead.Branch; j++ {
+		if attentionRank(sess.Agents[j]) > attentionRank(lead) {
+			lead = sess.Agents[j]
+		}
+	}
+	return r.stateColor(lead)
+}
+
+// branchRow is the agent block's headline: the branch, colored by state so
+// scanning the list reads as attention at a glance.
+func (r renderer) branchRow(branch string, col lipgloss.Color, lit, bar bool) string {
+	s := lipgloss.NewStyle().Foreground(col).Bold(true)
+	if lit {
+		// The edge occupies column 0 in place of the leading space, so the
+		// branch stays at column 1 whether or not the row is lit.
+		s = s.Background(r.theme.SelBg)
+		return r.leftEdge(bar) + s.Render(padCol(branch, max(r.width-1, 0)))
+	}
+	return s.Render(padCol(" "+branch, r.width))
+}
+
+func (r renderer) agentRow(a model.Agent, lit, bar bool, frame int, now time.Time) string {
+	col := r.stateColor(a)
 	// Each fragment carries its own style: an outer background would break at
 	// the inner resets and leave the highlight half-painted.
 	frag := func(c lipgloss.Color) lipgloss.Style {
@@ -242,13 +298,16 @@ func (r renderer) subRow(text string, italic, lit, bar bool) string {
 	return s.Render(padCol("     "+text, r.width))
 }
 
-// agentBlock renders an agent's full block: main row, branch (tapered
-// with … when long), and subagent count.
-func (r renderer) agentBlock(a model.Agent, lit, bar bool, frame int, now time.Time) []string {
-	lines := []string{r.agentRow(a, lit, bar, frame, now)}
-	if a.Branch != "" {
-		lines = append(lines, r.subRow(a.Branch, true, lit, bar))
+// agentBlock renders an agent's full block: the branch as a state-colored
+// headline (shown once per same-branch run), the status line beneath, and a
+// subagent count when any.
+func (r renderer) agentBlock(sess model.Session, idx int, lit, bar bool, frame int, now time.Time) []string {
+	a := sess.Agents[idx]
+	var lines []string
+	if agentShowsBranch(sess, idx) {
+		lines = append(lines, r.branchRow(a.Branch, r.groupColor(sess, idx), lit, bar))
 	}
+	lines = append(lines, r.agentRow(a, lit, bar, frame, now))
 	if a.Subagents > 0 {
 		plural := "s"
 		if a.Subagents == 1 {
@@ -264,9 +323,10 @@ func blockLineCount(b block, snap model.Snapshot) int {
 	if b.kind == blockSession {
 		return 2 // name + summary line
 	}
-	a := snap.Sessions[b.session].Agents[b.agent]
+	sess := snap.Sessions[b.session]
+	a := sess.Agents[b.agent]
 	n := 1
-	if a.Branch != "" {
+	if agentShowsBranch(sess, b.agent) {
 		n++
 	}
 	if a.Subagents > 0 {
