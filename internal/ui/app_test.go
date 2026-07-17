@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -352,5 +353,85 @@ func TestActivateCurrentSessionIsNoop(t *testing.T) {
 	a.cursor = 0 // alpha-1's header (current)
 	if _, _ = a.activate(); len(r.calls) != 0 {
 		t.Errorf("activating the current session issued %v", r.calls)
+	}
+}
+
+// attnSnap: an idle agent, a permission agent, and an asking agent across
+// three sessions. Blocks: 0=a, 1=%0(working), 2=b, 3=%2(idle),
+// 4=%3(permission), 5=c, 6=%4(question).
+func attnSnap() model.Snapshot {
+	return model.Snapshot{Sessions: []model.Session{
+		{Name: "a", Current: true, Agents: []model.Agent{
+			{PaneID: "%0", WindowIndex: 1, State: model.StateWorking},
+		}},
+		{Name: "b", Agents: []model.Agent{
+			{PaneID: "%2", WindowIndex: 1, State: model.StateIdle},
+			{PaneID: "%3", WindowIndex: 2, State: model.StatePermission},
+		}},
+		{Name: "c", Agents: []model.Agent{
+			{PaneID: "%4", WindowIndex: 1, State: model.StateQuestion},
+		}},
+	}}
+}
+
+func sawPane(r *fakeRunner, pane string) bool {
+	for _, c := range r.calls {
+		if slices.Contains(c, pane) {
+			return true
+		}
+	}
+	return false
+}
+
+// Tab is the work queue: it steps to the next agent waiting on the user
+// (permission/asking), skipping idle/working ones, jumping to each, and
+// wrapping around across sessions.
+func TestTabStepsThroughAttention(t *testing.T) {
+	r := &fakeRunner{}
+	a := App{runner: r, current: "a"}
+	a.setSnapshot(attnSnap())
+	if a.cursor != 1 {
+		t.Fatalf("initial cursor = %d, want 1 (first agent)", a.cursor)
+	}
+
+	// From the working agent, skip the idle one and land on permission (%3).
+	m, _ := a.Update(tea.KeyMsg{Type: tea.KeyTab})
+	a = m.(App)
+	if a.cursor != 4 {
+		t.Errorf("cursor = %d after tab, want 4 (permission %%3)", a.cursor)
+	}
+	if !sawPane(r, "%3") {
+		t.Errorf("tab did not jump to %%3; calls: %v", r.calls)
+	}
+
+	// Next tab advances to the asking agent (%4).
+	m, _ = a.Update(tea.KeyMsg{Type: tea.KeyTab})
+	a = m.(App)
+	if a.cursor != 6 {
+		t.Errorf("cursor = %d after 2nd tab, want 6 (asking %%4)", a.cursor)
+	}
+
+	// Past the last, it wraps back to the permission agent.
+	m, _ = a.Update(tea.KeyMsg{Type: tea.KeyTab})
+	a = m.(App)
+	if a.cursor != 4 {
+		t.Errorf("cursor = %d after 3rd tab, want 4 (wrapped)", a.cursor)
+	}
+}
+
+// With nobody waiting, tab does nothing — no move, no jump.
+func TestTabNoAttentionIsNoop(t *testing.T) {
+	r := &fakeRunner{}
+	a := testApp(r) // both agents idle
+	before := a.cursor
+	m, _ := a.Update(tea.KeyMsg{Type: tea.KeyTab})
+	a = m.(App)
+	if a.cursor != before {
+		t.Errorf("cursor moved to %d on tab with nothing waiting, want %d", a.cursor, before)
+	}
+	for _, c := range r.calls {
+		if len(c) > 0 && c[0] == "switch-client" {
+			t.Errorf("tab jumped with nothing waiting: %v", c)
+		}
 	}
 }

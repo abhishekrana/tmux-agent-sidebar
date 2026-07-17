@@ -25,7 +25,7 @@ dotfiles
 scratch             no agents
 ──────────────────────────────
  ⚠ 2 need attention
- j/k · ⏎/click jump · q hide
+ j/k · tab ⚠ · ⏎ jump · q
 ```
 
 The row under the mouse lights up (hover), and the row you last clicked — session or agent — stays highlighted;
@@ -71,6 +71,7 @@ Agents started before the hooks were installed are picked up on their next resta
 | `j`/`k`, wheel   | move between sessions and agents              |
 | `Enter`, click   | on an agent: jump to its pane; on a session name: switch to that session |
 | `g` / `G`        | first / last row                              |
+| `Tab`            | jump to the next agent waiting on you (permission/asking), cycling across sessions — the work queue |
 | `n`, click chip  | toggle desktop notifications (footer shows the state) |
 | `q`              | hide the sidebar everywhere (same as toggle)  |
 

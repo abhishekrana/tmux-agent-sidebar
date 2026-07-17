@@ -572,6 +572,51 @@ func TestJumpViaEnter(t *testing.T) {
 	})
 }
 
+// TestTabJumpsToAttention: Tab is the work queue — it steps straight to an
+// agent waiting on the user (permission/asking) in another session and
+// switches the client there, skipping idle/working agents.
+func TestTabJumpsToAttention(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script(1) not available for pty client")
+	}
+	s := start(t)
+	s.newSession("aaa")
+	s.newSession("bbb")
+	s.agentPane("aaa") // idle agent in the current session
+	bpane := s.agentPane("bbb")
+	s.tmux("set-option", "-g", "window-size", "manual")
+
+	// bbb's agent blocks on the user (a real tool-permission request).
+	s.hook(bpane, `{"hook_event_name":"PermissionRequest","tool_name":"Bash"}`)
+
+	s.script("toggle.sh")
+	sideA := s.sidebarPane("aaa")
+	waitFor(t, "sidebar shows bbb's waiting agent", 5*time.Second, func() bool {
+		return s.paneOption(bpane, "@agent_state") == "permission" &&
+			strings.Contains(s.capture(sideA), "permission")
+	})
+
+	client := exec.Command("script", "-qfc", "tmux attach-session -t aaa", "/dev/null")
+	client.Env = s.env
+	if err := client.Start(); err != nil {
+		t.Fatalf("attach client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Process.Kill(); _, _ = client.Process.Wait() })
+	waitFor(t, "client attached", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "aaa")
+	})
+
+	// From aaa's sidebar (cursor on aaa's idle agent), Tab jumps past it to
+	// the only agent waiting on the user — bbb's.
+	s.tmux("send-keys", "-t", sideA, "Tab", "")
+
+	waitFor(t, "Tab switched client to the waiting agent in bbb", 5*time.Second, func() bool {
+		out, _ := s.tmuxErr("list-clients", "-F", "#{client_session}")
+		return strings.Contains(out, "bbb")
+	})
+}
+
 // TestClickJump: a single mouse click on another session's agent must
 // switch there and highlight it in that session's own sidebar.
 func TestClickJump(t *testing.T) {

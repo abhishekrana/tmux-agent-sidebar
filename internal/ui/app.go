@@ -354,6 +354,22 @@ func (a *App) moveCursor(dir int) {
 	}
 }
 
+// nextAttention returns the block index of the next agent blocked on the
+// user (permission/asking), scanning forward from `from` and wrapping. It
+// is the sidebar's work queue: one key steps through everyone waiting on
+// you, across sessions. Returns -1 when nobody needs attention.
+func (a App) nextAttention(from int) int {
+	n := len(a.blocks)
+	for step := 1; step <= n; step++ {
+		i := (from + step) % n
+		b := a.blocks[i]
+		if b.kind == blockAgent && a.snap.Sessions[b.session].Agents[b.agent].State.NeedsAttention() {
+			return i
+		}
+	}
+	return -1
+}
+
 func (a App) Init() tea.Cmd {
 	if a.mockup {
 		return tick()
@@ -569,6 +585,13 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.moveCursor(-1)
 	case "enter", " ":
 		return a.activate()
+	case "tab":
+		// Work queue: jump straight to the next agent waiting on you,
+		// cycling through them across sessions. No-op when all quiet.
+		if i := a.nextAttention(a.cursor); i >= 0 {
+			a.cursor = i
+			return a.activate()
+		}
 	case "n":
 		return a.toggleNotify()
 	}

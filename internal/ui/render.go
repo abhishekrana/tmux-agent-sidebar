@@ -343,7 +343,11 @@ func (r renderer) footer(snap model.Snapshot, notify bool) string {
 	} else {
 		status = lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" all quiet")
 	}
-	hint := lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" j/k · ⏎ · n notify · q hide")
+	help := " j/k · ⏎ · n notify · q hide"
+	if snap.Attention() > 0 {
+		help = " j/k · tab ⚠ · ⏎ jump · q" // tab steps through agents waiting on you
+	}
+	hint := lipgloss.NewStyle().Foreground(r.theme.Muted).Render(help)
 	return r.sep() + "\n" + line(status, r.notifyChip(notify), r.width) + "\n" + hint
 }
 
