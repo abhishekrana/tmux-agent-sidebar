@@ -338,7 +338,7 @@ func blockLineCount(b block, snap model.Snapshot) int {
 func (r renderer) footer(snap model.Snapshot, notify bool) string {
 	var status string
 	if att := snap.Attention(); att > 0 {
-		status = lipgloss.NewStyle().Foreground(r.theme.Perm).Bold(true).
+		status = lipgloss.NewStyle().Foreground(r.theme.Asking).Bold(true).
 			Render(fmt.Sprintf(" ⚠ %d need attention", att))
 	} else {
 		status = lipgloss.NewStyle().Foreground(r.theme.Muted).Render(" all quiet")

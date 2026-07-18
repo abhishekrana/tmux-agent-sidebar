@@ -4,7 +4,8 @@
 # Options (set in ~/.tmux.conf before the TPM run line):
 #   @agent-sidebar-key     toggle key after prefix       (default: e)
 #   @agent-sidebar-width   sidebar width in columns      (default: 30)
-#   @agent-sidebar-theme   solarized-light | dark        (default: solarized-light)
+#   @agent-sidebar-theme   solarized-light|solarized-dark|catppuccin-latte|catppuccin-mocha
+#                          (default: solarized-light)
 #   @agent-sidebar-focus   'on' to focus the sidebar when opening
 set -euo pipefail
 

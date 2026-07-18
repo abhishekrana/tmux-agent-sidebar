@@ -26,7 +26,7 @@ commands:
   install-hooks [--target f]    add hook entries to Claude settings (default:
                                 ~/.claude/settings.json); idempotent
 
-themes: solarized-light (default), dark
+themes: solarized-light (default), solarized-dark, catppuccin-latte, catppuccin-mocha
 `
 
 func main() {

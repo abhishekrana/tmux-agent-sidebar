@@ -6,69 +6,106 @@ import (
 	"github.com/abhishekrana/tmux-agent-sidebar/internal/model"
 )
 
-// Theme is the sidebar palette. The default matches the user's terminal
-// background (no explicit bg fill) so it blends into any tmux window style.
+// Theme is the sidebar palette. Values mirror ~/dotfiles/design/palette.toml (the single
+// source of truth). No explicit bg fill, so the sidebar blends into the terminal background.
 type Theme struct {
 	Fg       lipgloss.Color // default text
 	Muted    lipgloss.Color // separators, hints, idle
-	Emphasis lipgloss.Color // session names
-	Accent   lipgloss.Color // current-session marker
+	Emphasis lipgloss.Color // session names, headlines
+	Accent   lipgloss.Color // selection rail, current marker
 	SelBg    lipgloss.Color // selected row background
-	Working  lipgloss.Color
-	Perm     lipgloss.Color
-	Question lipgloss.Color
-	Done     lipgloss.Color
+	Working  lipgloss.Color // calm, cool — the common case
+	Asking   lipgloss.Color // amber — a soft question needs you
+	Blocked  lipgloss.Color // red — a hard stop needs you
+	Done     lipgloss.Color // green — ready to review
 }
 
-// SolarizedLight matches the user's tmux/nvim/hunk Solarized Light stack.
+// SolarizedLight is the default flavor.
 func SolarizedLight() Theme {
 	return Theme{
-		Fg:       lipgloss.Color("#657b83"), // base00
-		Muted:    lipgloss.Color("#93a1a1"), // base1
-		Emphasis: lipgloss.Color("#586e75"), // base01
-		Accent:   lipgloss.Color("#268bd2"), // blue
-		SelBg:    lipgloss.Color("#eee8d5"), // base2
-		Working:  lipgloss.Color("#2aa198"), // cyan — active but calm, not shouting
-		Perm:     lipgloss.Color("#b58900"), // amber — needs you
-		Question: lipgloss.Color("#b58900"), // amber — needs you
-		Done:     lipgloss.Color("#859900"), // green — ready to review
+		Fg:       "#657b83",
+		Muted:    "#93a1a1",
+		Emphasis: "#586e75",
+		Accent:   "#268bd2",
+		SelBg:    "#eee8d5",
+		Working:  "#2aa198",
+		Asking:   "#b58900",
+		Blocked:  "#dc322f",
+		Done:     "#859900",
 	}
 }
 
-// Dark is a generic palette for dark terminals.
-func Dark() Theme {
+// SolarizedDark shares Solarized's accents; only the base tones invert.
+func SolarizedDark() Theme {
 	return Theme{
-		Fg:       lipgloss.Color("#c8c8c8"),
-		Muted:    lipgloss.Color("#6c6c6c"),
-		Emphasis: lipgloss.Color("#e4e4e4"),
-		Accent:   lipgloss.Color("#5fafff"),
-		SelBg:    lipgloss.Color("#303030"),
-		Working:  lipgloss.Color("#2aa198"), // cyan — active but calm
-		Perm:     lipgloss.Color("#d7af00"), // amber — needs you
-		Question: lipgloss.Color("#d7af00"), // amber — needs you
-		Done:     lipgloss.Color("#87af00"),
+		Fg:       "#839496",
+		Muted:    "#586e75",
+		Emphasis: "#93a1a1",
+		Accent:   "#268bd2",
+		SelBg:    "#073642",
+		Working:  "#2aa198",
+		Asking:   "#b58900",
+		Blocked:  "#dc322f",
+		Done:     "#859900",
 	}
 }
 
-// ThemeByName resolves the @agent-sidebar-theme option value.
+// CatppuccinLatte is the light Catppuccin flavor.
+func CatppuccinLatte() Theme {
+	return Theme{
+		Fg:       "#4c4f69",
+		Muted:    "#8c8fa1",
+		Emphasis: "#2e3047",
+		Accent:   "#1e66f5",
+		SelBg:    "#ccd0da",
+		Working:  "#179299",
+		Asking:   "#df8e1d",
+		Blocked:  "#d20f39",
+		Done:     "#40a02b",
+	}
+}
+
+// CatppuccinMocha is the dark Catppuccin flavor.
+func CatppuccinMocha() Theme {
+	return Theme{
+		Fg:       "#cdd6f4",
+		Muted:    "#6c7086",
+		Emphasis: "#eef1fb",
+		Accent:   "#89b4fa",
+		SelBg:    "#313244",
+		Working:  "#94e2d5",
+		Asking:   "#fab387",
+		Blocked:  "#f38ba8",
+		Done:     "#a6e3a1",
+	}
+}
+
+// ThemeByName resolves the @agent-sidebar-theme option value; unknown falls back to the default.
 func ThemeByName(name string) Theme {
 	switch name {
-	case "dark":
-		return Dark()
+	case "solarized-dark":
+		return SolarizedDark()
+	case "catppuccin-latte":
+		return CatppuccinLatte()
+	case "catppuccin-mocha":
+		return CatppuccinMocha()
+	case "dark": // back-compat: the old generic dark maps to Solarized Dark
+		return SolarizedDark()
 	default:
 		return SolarizedLight()
 	}
 }
 
-// StateColor maps an agent state to its theme color.
+// StateColor maps an agent state to its theme color. Permission is the hard red block;
+// question is the soft amber ask — the five-state language (idle reuses Muted).
 func (t Theme) StateColor(s model.AgentState) lipgloss.Color {
 	switch s {
 	case model.StateWorking:
 		return t.Working
 	case model.StatePermission:
-		return t.Perm
+		return t.Blocked
 	case model.StateQuestion:
-		return t.Question
+		return t.Asking
 	case model.StateDone:
 		return t.Done
 	default:

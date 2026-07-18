@@ -60,7 +60,7 @@ func TestGroupColorIsMostUrgent(t *testing.T) {
 		{Branch: "b", State: model.StatePermission},
 		{Branch: "b", State: model.StateDone},
 	}}
-	if got := r.groupColor(sess, 0); got != r.theme.Perm {
-		t.Errorf("shared branch should take the needs-you color %v, got %v", r.theme.Perm, got)
+	if got := r.groupColor(sess, 0); got != r.theme.Blocked {
+		t.Errorf("shared branch should take the most-urgent color %v, got %v", r.theme.Blocked, got)
 	}
 }
